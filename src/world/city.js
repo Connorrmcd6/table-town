@@ -86,8 +86,9 @@ addRoad(
   10, 'asphalt', 0.32, 'Beach Road', true
 );
 addRoad(SEABOARD_ZS.filter((z) => z >= 900).map(seaboardPoint), 10, 'asphalt', 0.32, 'Victoria Road', true);
-addRoad([...scalePts([[-650, 1000], [-850, 1180], [-1100, 1380], [-1400, 1520]]), CLIFTON_JOIN], 10, 'asphalt', 0.32, 'Kloof Road', true);
+// Camps Bay Drive drops from Kloof Nek; Kloof Road forks off it below the nek and contours round to Clifton.
 addRoad([...scalePts([[-650, 1000], [-850, 1250], [-1100, 1480], [-1350, 1660]]), CAMPS_BAY_JOIN], 10, 'asphalt', 0.32, 'Camps Bay Drive', true);
+addRoad([...scalePts([[-850, 1250], [-1100, 1300], [-1400, 1520]]), CLIFTON_JOIN], 10, 'asphalt', 0.32, 'Kloof Road', true);
 
 // Round Table Bay to Bloubergstrand: Marine Drive up the east shore, then Beach Boulevard behind the dunes.
 export const BLOUBERG_ROAD_OFFSET = 180;

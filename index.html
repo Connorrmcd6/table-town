@@ -30,7 +30,40 @@
       <div id="district"></div>
       <div id="notice"></div>
       <div id="subtitle"></div>
+      <div id="waypoint"></div>
       <div id="cheatbox"><span>CHEAT</span><input id="cheatinput" autocomplete="off" spellcheck="false" maxlength="20" /></div>
+    </div>
+    <div id="menu">
+      <div class="menubar">
+        <h2>TABLE TOWN</h2>
+        <button data-tab="map">Map</button>
+        <button data-tab="controls">Controls</button>
+        <button id="resume">Resume</button>
+      </div>
+      <div id="mappane" class="pane">
+        <canvas id="mapcanvas"></canvas>
+        <aside>
+          <h3>Places</h3>
+          <ul id="poilist"></ul>
+          <p class="help">Click a place to set a waypoint and follow the beam. Scroll to zoom, drag to pan, right-click to clear.</p>
+        </aside>
+        <div id="mapinfo"></div>
+      </div>
+      <div id="controlspane" class="pane">
+        <div class="controls">
+          <div><b>W A S D</b> / arrows - drive or run</div>
+          <div><b>F</b> - get in, jack a car, bail out, or ride the cable car</div>
+          <div><b>Space</b> - handbrake / jump / climb (run at a wall or car)</div>
+          <div><b>Click</b> - attack / throw C4 &nbsp; <b>Right-click</b> - aim / detonate C4</div>
+          <div><b>Hold Q</b> - weapon wheel (tap Q or mouse wheel to cycle)</div>
+          <div><b>H</b> - hooter &nbsp; <b>G</b> - gaartjie</div>
+          <div><b>C</b> - camera &nbsp; <b>R</b> - reset &nbsp; <b>M</b> - mute</div>
+          <div><b>Mouse</b> - look around</div>
+          <div><b>Tab</b> or <b>P</b> - map and menu (pauses) &nbsp; <b>Esc</b> - release the mouse and pause</div>
+          <div><b>`</b> or <b>/</b> - enter a cheat</div>
+        </div>
+      </div>
+      <p class="menuhint">Tab / P / Esc to resume</p>
     </div>
     <div id="title">
       <h1>TABLE TOWN</h1>
@@ -44,6 +77,7 @@
         <div><b>H</b> - hooter &nbsp; <b>G</b> - gaartjie</div>
         <div><b>C</b> - camera &nbsp; <b>R</b> - reset &nbsp; <b>M</b> - mute</div>
         <div><b>Mouse</b> - look around (click to capture, Esc to release)</div>
+        <div><b>Tab</b> or <b>P</b> - map, waypoints and controls</div>
         <div><b>`</b> or <b>/</b> - enter a cheat</div>
         <div class="hint">Rumour has it SOUTHEASTER does something.</div>
       </div>

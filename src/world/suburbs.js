@@ -54,6 +54,83 @@ function cellValid(x0, x1, z0, z1) {
   return min > 5 * S && max < 270 * S && max - min < 34 * S;
 }
 
+function segmentCross(ax, az, bx, bz, cx, cz, dx, dz) {
+  const rx = bx - ax, rz = bz - az, sx = dx - cx, sz = dz - cz;
+  const den = rx * sz - rz * sx;
+  if (Math.abs(den) < 1e-9) return null;
+  const qx = cx - ax, qz = cz - az;
+  const t = (qx * sz - qz * sx) / den, u = (qx * rz - qz * rx) / den;
+  return t > 0 && t < 1 && u >= 0 && u <= 1 ? { t, u, x: ax + rx * t, z: az + rz * t } : null;
+}
+
+const routeSegments = () => ROADS.filter((r) => r.route).flatMap((road) => road.points.slice(1).map((b, i) => ({ road, a: road.points[i], b })));
+
+// A main road passing through the block: it gets no houses, so the road isn't built over.
+function crossedByRoute(x0, x1, z0, z1, segs) {
+  const m = ROAD_W / 2;
+  const [a0, a1, b0, b1] = [x0 + m, x1 - m, z0 + m, z1 - m];
+  return segs.some(({ a, b }) => {
+    if ((a[0] > a0 && a[0] < a1 && a[1] > b0 && a[1] < b1) || (b[0] > a0 && b[0] < a1 && b[1] > b0 && b[1] < b1)) return true;
+    return [[a0, b0, a1, b0], [a1, b0, a1, b1], [a1, b1, a0, b1], [a0, b1, a0, b0]].some(([p, q, r, s]) => segmentCross(a[0], a[1], b[0], b[1], p, q, r, s));
+  });
+}
+
+// Insert a junction vertex into a main road's polyline (on the line itself, so its drawn shape is unchanged).
+function addRouteVertex(road, x, z) {
+  const pts = road.points;
+  if (pts.some(([px, pz]) => Math.hypot(px - x, pz - z) < 0.05)) return;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [ax, az] = pts[i], [bx, bz] = pts[i + 1];
+    const len = Math.hypot(bx - ax, bz - az);
+    const along = ((x - ax) * (bx - ax) + (z - az) * (bz - az)) / len;
+    const off = Math.abs((x - ax) * (bz - az) - (z - az) * (bx - ax)) / len;
+    if (off < 0.05 && along > 0 && along < len) {
+      pts.splice(i + 1, 0, [x, z]);
+      return;
+    }
+  }
+}
+
+// Suburb streets that meet a main road become real junctions: both are split at the crossing so traffic
+// can turn there. Slivers left near a block corner, and streets running alongside a main road, are dropped.
+function joinRoutes(edges, segs) {
+  const MIN_PIECE = 9;
+  const out = [];
+  for (const e of edges) {
+    const [[ax, az], [bx, bz]] = e.points;
+    const len = Math.hypot(bx - ax, bz - az);
+    const besideRoute = segs.some(({ road, a, b }) => {
+      let close = 0;
+      for (let d = 0; d <= len; d += 3) {
+        const px = ax + ((bx - ax) * d) / len, pz = az + ((bz - az) * d) / len;
+        const dx = b[0] - a[0], dz = b[1] - a[1];
+        const t = Math.max(0, Math.min(1, ((px - a[0]) * dx + (pz - a[1]) * dz) / (dx * dx + dz * dz)));
+        if (Math.hypot(px - a[0] - dx * t, pz - a[1] - dz * t) < (road.width + ROAD_W) / 2 + 1) close += 3;
+      }
+      return close > 12 && close > len * 0.3;
+    });
+    if (besideRoute) continue;
+    const cuts = [];
+    for (const { road, a, b } of segs) {
+      const hit = segmentCross(ax, az, bx, bz, a[0], a[1], b[0], b[1]);
+      if (hit) cuts.push({ ...hit, road });
+    }
+    if (!cuts.length) {
+      out.push(e);
+      continue;
+    }
+    cuts.sort((p, q) => p.t - q.t);
+    const stops = [{ t: 0, x: ax, z: az }, ...cuts, { t: 1, x: bx, z: bz }];
+    for (const c of cuts) addRouteVertex(c.road, c.x, c.z);
+    for (let i = 0; i < stops.length - 1; i++) {
+      const p = stops[i], q = stops[i + 1];
+      if ((q.t - p.t) * len < MIN_PIECE) continue;
+      out.push({ ...e, points: [[p.x, p.z], [q.x, q.z]] });
+    }
+  }
+  return out;
+}
+
 function distToSegments(x, z, roads) {
   let best = Infinity;
   for (const r of roads) {
@@ -90,12 +167,13 @@ function addApartments(builder, colliders, rect) {
 
 export function createSuburbs(scene, colliders) {
   const specialRoads = ROADS.slice();
+  const routes = routeSegments();
   const valid = new Set();
   const cells = [];
   for (let i = 0; i < XS.length - 1; i++) {
     for (let j = 0; j < ZS.length - 1; j++) {
       const [x0, x1, z0, z1] = [XS[i], XS[i + 1], ZS[j], ZS[j + 1]];
-      if (cellValid(x0, x1, z0, z1)) {
+      if (cellValid(x0, x1, z0, z1) && !crossedByRoute(x0, x1, z0, z1, routes)) {
         valid.add(`${i},${j}`);
         cells.push([x0, x1, z0, z1]);
       }
@@ -118,8 +196,9 @@ export function createSuburbs(scene, colliders) {
     addEdge(x1, z0, x1, z1, 0.15);
   }
 
+  const streets = joinRoutes([...edges.values()], routes);
   const asphalt = new MeshBuilder();
-  for (const road of edges.values()) {
+  for (const road of streets) {
     buildRoads(asphalt, road);
     ROADS.push(road);
   }
@@ -200,7 +279,7 @@ export function createSuburbs(scene, colliders) {
 
   return {
     walkRects,
-    edges: [...edges.values()].map((r) => ({ a: r.points[0], b: r.points[1], width: r.width })),
+    edges: streets.map((r) => ({ a: r.points[0], b: r.points[1], width: r.width })),
     isSuburb(x, z) {
       return valid.has(`${lineIndex(XS, x)},${lineIndex(ZS, z)}`);
     },

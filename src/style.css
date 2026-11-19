@@ -97,3 +97,53 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1410; }
 #title .hint { margin-top: 8px; color: #ffd84a; font-size: 15px; }
 #start { margin-top: 26px; font-size: 24px; text-shadow: 2px 2px 0 #000; animation: pulse 1.4s infinite; }
 @keyframes pulse { 50% { opacity: 0.45; } }
+
+#waypoint {
+  position: absolute; left: 26px; bottom: 214px; font-size: 17px; font-weight: 500; color: #ffd84a; text-shadow: 2px 2px 0 #000; display: none;
+}
+#waypoint.show { display: block; }
+
+#menu {
+  position: fixed; inset: 0; display: none; flex-direction: column; background: rgba(12, 10, 14, 0.94); color: #fff;
+  font-family: 'Oswald', Impact, sans-serif; padding: 18px 22px 12px; gap: 12px;
+}
+#menu.show { display: flex; }
+#menu .menubar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+#menu h2 {
+  font-family: 'Anton', Impact, sans-serif; font-size: 34px; margin: 0 18px 0 0; letter-spacing: 3px; color: #ffcf6e;
+  text-shadow: 3px 3px 0 #000;
+}
+#menu button {
+  font: 600 18px 'Oswald', sans-serif; letter-spacing: 1px; text-transform: uppercase; color: #ddd; background: rgba(255, 255, 255, 0.08);
+  border: 2px solid transparent; border-radius: 4px; padding: 6px 16px; cursor: pointer;
+}
+#menu button:hover { background: rgba(255, 255, 255, 0.16); }
+#menu button.on { color: #111; background: #ffcf6e; }
+#menu #resume { margin-left: auto; border-color: #ffcf6e; color: #ffcf6e; }
+#menu .pane { display: none; flex: 1; min-height: 0; }
+#menu .pane.show { display: flex; }
+#mappane { position: relative; gap: 14px; }
+#mapcanvas { flex: 1; min-width: 0; height: 100%; border: 2px solid #000; border-radius: 6px; background: #1e4e68; }
+#mappane aside { width: 250px; overflow-y: auto; background: rgba(0, 0, 0, 0.45); border-radius: 6px; padding: 12px 14px; }
+#mappane h3 { margin: 0 0 8px; font-family: 'Anton', Impact, sans-serif; letter-spacing: 2px; color: #ffcf6e; font-weight: 400; }
+#poilist { list-style: none; margin: 0; padding: 0; }
+#poilist li { display: flex; align-items: center; gap: 10px; padding: 5px 6px; border-radius: 4px; cursor: pointer; font-size: 16px; }
+#poilist li:hover { background: rgba(255, 255, 255, 0.1); }
+#poilist li.on { background: rgba(255, 216, 74, 0.25); color: #ffd84a; }
+#poilist i {
+  width: 20px; height: 20px; flex: none; border-radius: 50%; border: 2px solid #000; display: grid; place-items: center;
+  font-style: normal; font-size: 12px; font-weight: 700;
+}
+#mappane .help { font-size: 14px; color: #bbb; line-height: 1.5; }
+#mapinfo {
+  position: absolute; left: 14px; bottom: 12px; background: rgba(0, 0, 0, 0.7); padding: 6px 12px; border-radius: 4px; font-size: 16px;
+  pointer-events: none;
+}
+#controlspane { align-items: center; justify-content: center; }
+#controlspane .controls { font-size: 20px; line-height: 1.8; background: rgba(0, 0, 0, 0.55); padding: 20px 34px; border-radius: 6px; }
+#menu .menuhint { margin: 0; text-align: center; color: #999; font-size: 15px; }
+@media (max-width: 760px) {
+  #mappane { flex-direction: column; }
+  #mappane aside { width: auto; max-height: 30%; }
+}
+body.paused #hud { visibility: hidden; }

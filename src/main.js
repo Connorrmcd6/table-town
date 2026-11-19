@@ -7,7 +7,8 @@ import { createSeaboard } from './world/seaboard.js';
 import { createBlouberg } from './world/blouberg.js';
 import { createSuburbs } from './world/suburbs.js';
 import { createStreetlights } from './world/streetlights.js';
-import { districtAt, w as toWorld } from './world/heightmap.js';
+import { districtAt, atlanticShore, atlanticLine, bloubergZ, DISA_PARK, w as toWorld } from './world/heightmap.js';
+import { createMapMenu } from './mapmenu.js';
 import { ColliderGrid } from './collision.js';
 import { playerTaxi, makeVehicle, seatRider } from './vehicles/models.js';
 import { clearPose, addPistol, addArsenal } from './people/person.js';
@@ -953,7 +954,10 @@ function tick(dt) {
     if (t) promptText = `F - ${t.kind === 'parked' ? 'get in' : 'jack'} the ${VEHICLE_NAMES[t.car.model.type] || 'car'}`;
   }
   hud.prompt(promptText);
-  hud.drawRadar(focus, traffic.cars, cops);
+  const wp = world.mapMenu.track(focus.pos, dt);
+  if (wp?.arrived) hud.notify(`You've arrived: ${wp.arrived}`, 3);
+  hud.waypoint(wp && !wp.arrived ? wp : null);
+  hud.drawRadar(focus, traffic.cars, cops, wp && !wp.arrived ? wp : null);
   endFrame();
 }
 
@@ -961,9 +965,36 @@ let last = performance.now();
 function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  tick(dt);
+  if (world.mapMenu.isOpen) {
+    world.mapMenu.draw();
+    endFrame();
+  } else tick(dt);
   renderer.render(scene, camera);
   requestAnimationFrame(loop);
+}
+
+// Places worth driving to, for the map's list and waypoints.
+function placesOfInterest() {
+  const { landmarks, hospital } = world;
+  const cable = landmarks.cableCar.stations;
+  const shore = (rz, off) => ({ x: atlanticShore(toWorld(rz)) + toWorld(off), z: toWorld(rz) });
+  return [
+    { name: HOSPITAL.name, kind: 'hospital', x: hospital.x, z: hospital.z },
+    { name: `${STATION.name} police`, kind: 'police', x: STATION.x, z: STATION.z },
+    { name: 'Lower Cable Station', kind: 'cable', x: cable.lower.dock.x, z: cable.lower.dock.z },
+    { name: 'Table Mountain summit', kind: 'cable', x: cable.upper.exit.x, z: cable.upper.exit.z },
+    { name: 'Bike showroom', kind: 'shop', x: toWorld(-180) + 20, z: toWorld(-180) - 6 },
+    { name: 'Bo-Kaap', kind: 'place', x: toWorld(-180), z: toWorld(-130) },
+    { name: 'Duncan Dock', kind: 'place', x: toWorld(800), z: toWorld(-700) },
+    { name: 'Disa Park', kind: 'place', x: DISA_PARK.x, z: DISA_PARK.z },
+    { name: 'Noon Gun', kind: 'view', x: toWorld(-1150), z: toWorld(-150) },
+    { name: 'Kloof Nek', kind: 'view', x: toWorld(-650), z: toWorld(1000) },
+    { name: "Lion's Head", kind: 'view', x: toWorld(-1535), z: toWorld(1075) },
+    { name: 'Sea Point promenade', kind: 'beach', x: atlanticLine(toWorld(300)) + toWorld(52), z: toWorld(300) },
+    { name: 'Clifton beaches', kind: 'beach', ...shore(1430, 25) },
+    { name: 'Camps Bay beach', kind: 'beach', ...shore(1850, 90) },
+    { name: 'Bloubergstrand', kind: 'beach', x: toWorld(300), z: toWorld(bloubergZ(300) - 70) },
+  ];
 }
 
 function start() {
@@ -986,6 +1017,38 @@ loadVehicleModels().then(() => {
   startEl.textContent = 'Press Enter or click to start';
   window.addEventListener('keydown', (e) => { if (e.code === 'Enter') start(); });
   titleEl.addEventListener('click', start);
+  world.mapMenu = createMapMenu({
+    scene,
+    getPlayer: controlled,
+    getCops: () => [...world.police.chasers.map((c) => c.car), ...world.police.officers.list],
+    getRoads: () => world.roads.segs,
+    pois: placesOfInterest(),
+    onOpen: () => {
+      chase.enabled = false;
+      releaseAll();
+      if (picker.open) closePicker();
+      if (document.pointerLockElement) document.exitPointerLock();
+      audio.updateEngine(0, false, false, 160);
+    },
+    onClose: () => {
+      releaseAll();
+      chase.enabled = true;
+      lockPointer(canvas);
+    },
+  });
+  window.addEventListener('keydown', (e) => {
+    if (!state.started || cheatPrompt.open || e.target instanceof HTMLInputElement) return;
+    const menu = world.mapMenu;
+    if (e.code === 'Tab' || e.code === 'KeyP') {
+      e.preventDefault();
+      if (menu.isOpen) menu.close();
+      else menu.show('map');
+    } else if (e.code === 'Escape' && menu.isOpen) menu.close();
+  });
+  // Esc releases the mouse mid-game: treat that as a pause and open the menu.
+  document.addEventListener('pointerlockchange', () => {
+    if (state.started && !document.pointerLockElement && !world.mapMenu.isOpen && !cheatPrompt.open) world.mapMenu.show('map');
+  });
   window.__tabletown = { world, state, camera, renderer, scene, applyCheat, tick, chase };
   requestAnimationFrame(loop);
 });

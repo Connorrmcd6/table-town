@@ -10,6 +10,8 @@ export function createHud() {
   const weaponEl = $('weapon'), crosshair = $('crosshair');
   const carBar = $('carhealth'), carFill = $('carhealthfill');
   const wheelEl = $('wheel');
+  const waypointEl = $('waypoint');
+  let lastWaypoint = null;
   let wheelSlots = null;
   let lastWeapon = null;
   const stars = [...wanted.children];
@@ -107,7 +109,15 @@ export function createHud() {
     big.classList.toggle('show', !!text);
   }
 
-  function drawRadar(player, cars, cops = []) {
+  function waypoint(wp) {
+    const text = wp ? `▶ ${wp.name}  ${wp.dist > 1000 ? `${(wp.dist / 1000).toFixed(1)} km` : `${Math.round(wp.dist / 10) * 10} m`}` : '';
+    if (text === lastWaypoint) return;
+    lastWaypoint = text;
+    waypointEl.textContent = text;
+    waypointEl.classList.toggle('show', !!wp);
+  }
+
+  function drawRadar(player, cars, cops = [], wp = null) {
     const W = radar.width, R = W / 2, scale = 0.6;
     rctx.save();
     rctx.clearRect(0, 0, W, W);
@@ -146,6 +156,27 @@ export function createHud() {
       rctx.fillRect(c.pos.x - 5, c.pos.z - 5, 10, 10);
     }
     rctx.restore();
+    if (wp) {
+      // Waypoint diamond, pinned to the rim when it's off the radar.
+      const a = player.heading - Math.PI, rx = (wp.x - player.pos.x) * scale, rz = (wp.z - player.pos.z) * scale;
+      let sx = rx * Math.cos(a) - rz * Math.sin(a), sy = rx * Math.sin(a) + rz * Math.cos(a);
+      const len = Math.hypot(sx, sy), max = R - 12;
+      if (len > max) {
+        sx *= max / len;
+        sy *= max / len;
+      }
+      rctx.fillStyle = '#ffd84a';
+      rctx.strokeStyle = '#000';
+      rctx.lineWidth = 2;
+      rctx.beginPath();
+      rctx.moveTo(R + sx, R + sy - 8);
+      rctx.lineTo(R + sx + 7, R + sy);
+      rctx.lineTo(R + sx, R + sy + 8);
+      rctx.lineTo(R + sx - 7, R + sy);
+      rctx.closePath();
+      rctx.fill();
+      rctx.stroke();
+    }
     rctx.fillStyle = '#fff';
     rctx.beginPath();
     rctx.moveTo(R, R - 8);
@@ -164,7 +195,7 @@ export function createHud() {
     rctx.stroke();
   }
 
-  return { update, notify, say, drawRadar, status, prompt, bigText, weapon, wheel };
+  return { update, notify, say, drawRadar, status, prompt, bigText, weapon, wheel, waypoint };
 }
 
 const NAMED = () => ROADS.filter((r) => r.name);

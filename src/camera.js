@@ -49,12 +49,18 @@ export class ChaseCamera {
     const m = car.cameraProfile || MODES[this.mode];
     const vel = car.vel.length();
     if (this.yaw === null || snap) this.yaw = car.heading;
-    let d = car.heading - this.yaw;
-    d = Math.atan2(Math.sin(d), Math.cos(d));
-    this.yaw += d * Math.min(1, dt * (m.inside ? 20 : car.cameraProfile ? 1.6 : 3.5));
+    if (m.free) {
+      // On foot the camera only turns when the mouse does; the character never drags it around.
+      this.yaw += this.lookYaw;
+      this.lookYaw = 0;
+    } else {
+      let d = car.heading - this.yaw;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      this.yaw += d * Math.min(1, dt * (m.inside ? 20 : 3.5));
+    }
 
     this.idle += dt;
-    if (this.idle > RECENTER_AFTER && vel > 3) {
+    if (!m.free && this.idle > RECENTER_AFTER && vel > 3) {
       const k = Math.min(1, dt * 2.5);
       this.lookYaw = Math.atan2(Math.sin(this.lookYaw), Math.cos(this.lookYaw)) * (1 - k);
       this.lookPitch *= 1 - k;

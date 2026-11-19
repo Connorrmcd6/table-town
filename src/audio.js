@@ -44,15 +44,16 @@ export function initAudio() {
   wind.start();
 }
 
-export function updateEngine(speed, throttle, running = true) {
+export function updateEngine(speed, throttle, running = true, topKmh = 160) {
   if (!ctx) return;
   if (!running) {
     engineGain.gain.setTargetAtTime(0, ctx.currentTime, 0.1);
     return;
   }
   const kmh = Math.abs(speed) * 3.6;
-  const gear = Math.min(4, Math.floor(kmh / 32));
-  const rpm = 0.25 + ((kmh - gear * 32) / 32) * 0.75;
+  const gearSize = Math.max(32, topKmh / 6);
+  const gear = Math.min(5, Math.floor(kmh / gearSize));
+  const rpm = 0.25 + Math.min(1, (kmh - gear * gearSize) / gearSize) * 0.75;
   const f = 38 + rpm * 70 + gear * 6;
   const t = ctx.currentTime;
   engineOsc.frequency.setTargetAtTime(f, t, 0.05);

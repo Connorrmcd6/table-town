@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { makePerson, randomLook, poseRider } from '../people/person.js';
 
 const matCache = new Map();
 function mat(kind, color, emissive) {
@@ -179,11 +180,12 @@ function plates(group, rnd, y, front, back) {
   const m = new THREE.MeshLambertMaterial({ map: tex });
   const geo = new THREE.PlaneGeometry(0.52, 0.13);
   const f = new THREE.Mesh(geo, m);
-  f.position.set(0, y, front + 0.005);
+  f.position.set(0, y, (front ?? 0) + 0.005);
   const b = new THREE.Mesh(geo, m);
   b.position.set(0, y, back - 0.005);
   b.rotation.y = Math.PI;
-  group.add(f, b);
+  group.add(b);
+  if (front !== null) group.add(f);
 }
 
 const BRAKE_OFF = { color: new THREE.Color('#8a1414'), emissive: new THREE.Color('#2a0000') };
@@ -324,16 +326,171 @@ function bakkie(rnd, color, police = false) {
   return { group: g, wheels: w, brake, spec: { length: L, width: W, wheelbase: 3.1, maxSpeed: 45, accel: 9.5, radius: r, mass: 1.4 } };
 }
 
+function bikeWheels(group, radius, frontZ, rearZ, tyreW, rim) {
+  const geo = wheelGeometry(radius, tyreW, rim);
+  const pivot = new THREE.Group();
+  pivot.position.set(0, 0, frontZ);
+  const front = new THREE.Mesh(geo, FLAT);
+  front.position.y = radius;
+  front.castShadow = true;
+  pivot.add(front);
+  const rear = new THREE.Mesh(geo, FLAT);
+  rear.position.set(0, radius, rearZ);
+  rear.castShadow = true;
+  group.add(pivot, rear);
+  return { pivot, wheels: { front: [pivot], all: [front, rear] } };
+}
+
+function deliveryTexture() {
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 96;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#1f8a3a';
+  ctx.fillRect(0, 0, 128, 96);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 26px Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('SIXTY', 64, 40);
+  ctx.font = 'bold 22px Arial, sans-serif';
+  ctx.fillText('-ish', 64, 64);
+  ctx.font = '11px Arial, sans-serif';
+  ctx.fillText('delivered eventually', 64, 84);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+let deliveryMat = null;
+
+function scooter(rnd) {
+  const g = new THREE.Group();
+  const brake = brakeMaterial();
+  const green = '#1f8a3a';
+  const r = 0.24;
+  addMesh(g, extrudeAcross(polygon([[-0.75, 0.32], [0.05, 0.32], [0.12, 0.52], [-0.1, 0.62], [-0.62, 0.66], [-0.8, 0.5]]), 0.42, true), mat('paint', green));
+  addMesh(g, extrudeAcross(polygon([[0.2, 0.32], [0.45, 0.32], [0.6, 0.9], [0.5, 1.0], [0.38, 0.95], [0.28, 0.5]]), 0.44, true), mat('paint', green));
+  box(g, 0.36, 0.08, 0.6, 0, 0.3, 0.0, '#2a2a2a');
+  box(g, 0.3, 0.08, 0.55, 0, 0.7, -0.32, '#1b1b1b');
+  box(g, 0.4, 0.04, 0.4, 0, 0.74, -0.62, '#3a3a3a');
+  deliveryMat = deliveryMat || new THREE.MeshLambertMaterial({ map: deliveryTexture() });
+  const crate = addMesh(g, new THREE.BoxGeometry(0.48, 0.42, 0.45), deliveryMat);
+  crate.position.set(0, 0.98, -0.62);
+  tail(g, brake, 0.12, 0.06, 0, 0.62, -0.82);
+  const { pivot, wheels: w } = bikeWheels(g, r, 0.62, -0.6, 0.12, '#bdbdbd');
+  const fork = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.75, 0.05), mat('flat', '#3a3a3a'));
+  fork.position.set(0, 0.62, -0.08);
+  fork.rotation.x = -0.3;
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.05, 0.05), mat('flat', '#222'));
+  bar.position.set(0, 1.05, -0.18);
+  const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.09, 0.04), LAMP_MAT);
+  lamp.position.set(0, 0.98, -0.02);
+  pivot.add(fork, bar, lamp);
+  plates(g, rnd, 0.55, null, -0.84);
+  return {
+    group: g, wheels: w, brake,
+    spec: { length: 1.95, width: 0.8, wheelbase: 1.22, maxSpeed: 24, accel: 6.5, radius: r, mass: 0.35, bike: true, steerScale: 0.6, seat: { y: 0.74, z: -0.3, lean: 0.05 } },
+  };
+}
+
+function superbike(rnd, [paint, trim]) {
+  const g = new THREE.Group();
+  const brake = brakeMaterial();
+  const r = 0.31;
+  addMesh(g, extrudeAcross(polygon([[-0.1, 0.46], [0.38, 0.42], [0.58, 0.62], [0.95, 0.8], [0.92, 0.94], [0.7, 1.06], [0.48, 1.02]]), 0.42, true), mat('paint', paint));
+  addMesh(g, extrudeAcross(polygon([[0.5, 0.98], [0.2, 1.1], [-0.28, 1.02], [-0.32, 0.82], [0.0, 0.8], [0.45, 0.86]]), 0.36, true), mat('paint', paint));
+  addMesh(g, extrudeAcross(polygon([[-0.3, 0.8], [-0.25, 0.94], [-1.0, 1.1], [-1.1, 1.03], [-0.85, 0.86]]), 0.28, true), mat('paint', trim));
+  box(g, 0.44, 0.04, 0.5, 0, 0.72, 0.62, trim);
+  box(g, 0.28, 0.06, 0.42, 0, 0.97, -0.42, '#1b1b1b');
+  const screen = addMesh(g, new THREE.BoxGeometry(0.3, 0.22, 0.03), mat('glass', '#2a3644'));
+  screen.position.set(0, 1.12, 0.62);
+  screen.rotation.x = -0.65;
+  box(g, 0.34, 0.32, 0.45, 0, 0.5, 0.02, '#2a2a2a');
+  box(g, 0.12, 0.12, 0.55, 0.19, 0.55, -0.62, '#c8c8c8');
+  for (const x of [-0.13, 0.13]) box(g, 0.06, 0.08, 0.6, x, 0.36, -0.42, '#2a2a2a');
+  box(g, 0.22, 0.08, 0.05, 0, 0.86, 0.95, '#fff3cf', '#fff1c0');
+  tail(g, brake, 0.18, 0.05, 0, 1.02, -1.12);
+  const { pivot, wheels: w } = bikeWheels(g, r, 0.8, -0.66, 0.2, '#5c5c5c');
+  for (const x of [-0.1, 0.1]) {
+    const tube = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.8, 0.05), mat('flat', '#c8a84a'));
+    tube.position.set(x, 0.68, -0.14);
+    tube.rotation.x = -0.42;
+    pivot.add(tube);
+  }
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.04, 0.04), mat('flat', '#222'));
+  bar.position.set(0, 1.02, -0.3);
+  pivot.add(bar);
+  plates(g, rnd, 0.82, null, -1.14);
+  return {
+    group: g, wheels: w, brake,
+    spec: { length: 2.1, width: 0.8, wheelbase: 1.42, maxSpeed: 100, accel: 15, drag: 0.00042, radius: r, mass: 0.45, bike: true, steerScale: 0.5, seat: { y: 0.97, z: -0.42, lean: 0.55 } },
+  };
+}
+
+function sportsCar(rnd, color) {
+  const g = new THREE.Group();
+  const brake = brakeMaterial();
+  const W = 1.88, L = 4.45, r = 0.33;
+  const shape = bodyShape({
+    rearZ: -2.2, frontZ: 2.2, sill: 0.28,
+    arches: [{ z: 1.38, r: 0.38 }, { z: -1.32, r: 0.38 }],
+    upper: [[2.27, 0.44], [2.28, 0.62], [2.1, 0.72], [0.9, 0.92], [0.15, 1.2], [-0.55, 1.22], [-1.6, 1.0], [-2.2, 0.94], [-2.25, 0.6]],
+  });
+  addMesh(g, extrudeAcross(shape, W, true), mat('paint', color));
+  const glass = polygon([[0.85, 1.0], [0.28, 1.18], [-0.6, 1.18], [-1.55, 1.04], [-1.5, 0.98]]);
+  addMesh(g, extrudeAcross(glass, W - 0.14, false), mat('glass', '#141c24'));
+  pillars(g, W - 0.12, [-0.15], 0.98, 1.18, color);
+  box(g, W - 0.1, 0.05, 0.32, 0, 1.08, -2.08, '#1b1b1b');
+  for (const x of [-0.7, 0.7]) box(g, 0.06, 0.12, 0.06, x, 1.0, -2.08, '#1b1b1b');
+  for (const side of [-1, 1]) box(g, 0.04, 0.16, 0.5, side * (W / 2 + 0.01), 0.55, -0.4, '#1b1b1b');
+  box(g, W + 0.02, 0.12, 0.12, 0, 0.32, 2.24, '#1b1b1b');
+  box(g, 0.9, 0.1, 0.04, 0, 0.45, 2.27, '#141414');
+  for (const side of [-1, 1]) {
+    box(g, 0.42, 0.07, 0.05, side * 0.62, 0.66, 2.2, '#fff3cf', '#fff1c0');
+    tail(g, brake, 0.5, 0.07, side * 0.55, 0.8, -2.24);
+  }
+  mirrors(g, W, 0.98, 0.65, color);
+  plates(g, rnd, 0.5, 2.28, -2.27);
+  const w = wheels(g, W, r, [1.38, -1.32], 0.3, '#c8c8c8');
+  return { group: g, wheels: w, brake, spec: { length: L, width: W, wheelbase: 2.7, maxSpeed: 100, accel: 15, drag: 0.0004, radius: r, mass: 1.1, steerScale: 0.9 } };
+}
+
+const LAMP_MAT = new THREE.MeshBasicMaterial({ color: '#fff3cf' });
+
+function addRider(model, rnd) {
+  const person = makePerson(randomLook(rnd));
+  seatRider(model, person);
+  model.rider = person;
+  return model;
+}
+
+// Sit a person on a bike's saddle in a riding crouch.
+export function seatRider(model, person) {
+  const seat = model.spec.seat;
+  poseRider(person, seat.lean);
+  const s = person.group.scale.x;
+  person.group.position.set(0, seat.y - 0.94 * s + 0.04, seat.z);
+  person.group.rotation.set(0, 0, 0);
+  model.group.add(person.group);
+}
+
+const SPORTS_COLOURS = ['#c0392b', '#f1c40f', '#1b1b1b', '#ecf0f1', '#2e86de', '#e67e22', '#16a085'];
+const BIKE_LIVERIES = [['#c0392b', '#1b1b1b'], ['#1d4fa8', '#ecf0f1'], ['#f1c40f', '#1b1b1b'], ['#2e9e3a', '#1b1b1b'], ['#1b1b1b', '#c0392b']];
+
 const GOLF_COLOURS = ['#c0392b', '#f1c40f', '#2e86de', '#27ae60', '#ecf0f1', '#8e44ad', '#e67e22', '#34495e'];
 const BAKKIE_COLOURS = ['#ecf0f1', '#bdc3c7', '#7f8c8d', '#2c3e50', '#a93226'];
 const TAXI_LIVERIES = [['#1f5fbf', '#f2c230'], ['#c0392b', '#f2c230'], ['#2e8b57', '#ffffff'], ['#6c3483', '#f39c12']];
 
-export function makeVehicle(type, rnd = Math.random) {
+const maybeRider = (model, rnd, opts) => (opts.rider ? addRider(model, rnd) : model);
+
+export function makeVehicle(type, rnd = Math.random, opts = { rider: true }) {
   const p = (a) => a[Math.floor(rnd() * a.length)];
   if (type === 'taxi') return optimize({ type, ...minibus(rnd, p(TAXI_LIVERIES)) });
   if (type === 'golf') return optimize({ type, ...hatch(rnd, p(GOLF_COLOURS)) });
   if (type === 'bakkie') return optimize({ type, ...bakkie(rnd, p(BAKKIE_COLOURS)) });
   if (type === 'police') return addSiren(optimize({ type, ...bakkie(rnd, '#f4f4f0', true) }));
+  if (type === 'scooter') return maybeRider(optimize({ type, ...scooter(rnd) }), rnd, opts);
+  if (type === 'superbike') return maybeRider(optimize({ type, ...superbike(rnd, p(BIKE_LIVERIES)) }), rnd, opts);
+  if (type === 'sports') return optimize({ type, ...sportsCar(rnd, p(SPORTS_COLOURS)) });
   throw new Error(`unknown vehicle ${type}`);
 }
 

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const matCache = new Map();
 const mat = (color) => {
@@ -6,82 +7,228 @@ const mat = (color) => {
   return matCache.get(color);
 };
 
-const SKIN = ['#5a3a28', '#7a5038', '#a0704c', '#c48f68', '#e0b896', '#3e2a1e'];
-const TOPS = ['#c0392b', '#2e86de', '#f1c40f', '#ecf0f1', '#27ae60', '#8e44ad', '#e67e22', '#34495e', '#16a085', '#d35400'];
-const BOTTOMS = ['#2c3e50', '#1b1b1b', '#5d6d7e', '#7f6a4f', '#283747', '#b8a88a'];
-const SHOES = ['#f4f4f0', '#1b1b1b', '#7a5038'];
+const SKIN = ['#4a2e1e', '#5a3a28', '#7a5038', '#8f6040', '#a0704c', '#c48f68', '#e0b896', '#3e2a1e'];
+const TOPS = ['#c0392b', '#2e86de', '#f1c40f', '#ecf0f1', '#27ae60', '#8e44ad', '#e67e22', '#34495e', '#16a085', '#d35400', '#1b1b1b', '#f4a6b8'];
+const BOTTOMS = ['#2c3e50', '#1b1b1b', '#5d6d7e', '#7f6a4f', '#283747', '#b8a88a', '#4a5f8a', '#6b2d2d'];
+const SHOES = ['#f4f4f0', '#1b1b1b', '#7a5038', '#c0392b'];
+const HAIR = ['#120c08', '#1f1510', '#3b2414', '#6b4a2a', '#b08850', '#8a8a8a'];
+const HATS = ['#c0392b', '#1b1b1b', '#2e86de', '#f1c40f', '#ecf0f1', '#27ae60', '#d9c38a'];
+const HAIRSTYLES = ['short', 'short', 'bald', 'cap', 'bucket', 'doek', 'long', 'beanie'];
 
-function limb(w, h, d, color, pivotY) {
-  const pivot = new THREE.Group();
-  pivot.position.y = pivotY;
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d).translate(0, -h / 2, 0), mat(color));
+function box(w, h, d, color, x = 0, y = 0, z = 0) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color));
+  m.position.set(x, y, z);
   m.castShadow = true;
-  pivot.add(m);
-  return pivot;
+  return m;
+}
+
+const PERSON_MAT = new THREE.MeshLambertMaterial({ vertexColors: true });
+
+// Collapse a joint's own boxes into one vertex-coloured mesh so each body segment is a single draw call.
+function bake(group, shadow) {
+  const parts = group.children.filter((c) => c.isMesh);
+  if (!parts.length) return;
+  const geos = parts.map((m) => {
+    m.updateMatrix();
+    const g = (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()).applyMatrix4(m.matrix);
+    const out = new THREE.BufferGeometry();
+    out.setAttribute('position', g.getAttribute('position'));
+    out.setAttribute('normal', g.getAttribute('normal'));
+    const n = g.getAttribute('position').count, c = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) m.material.color.toArray(c, i * 3);
+    out.setAttribute('color', new THREE.BufferAttribute(c, 3));
+    group.remove(m);
+    return out;
+  });
+  const merged = new THREE.Mesh(mergeGeometries(geos), PERSON_MAT);
+  merged.castShadow = shadow;
+  group.add(merged);
+}
+
+// Two-segment limb: returns { root, joint } where root swings at the hip/shoulder and joint is the knee/elbow.
+function limb(upperLen, lowerLen, upperW, lowerW, upperColor, lowerColor, end) {
+  const root = new THREE.Group();
+  root.add(box(upperW, upperLen, upperW, upperColor, 0, -upperLen / 2, 0));
+  const joint = new THREE.Group();
+  joint.position.y = -upperLen;
+  joint.add(box(lowerW, lowerLen, lowerW, lowerColor, 0, -lowerLen / 2, 0));
+  if (end) {
+    end.position.y -= lowerLen;
+    joint.add(end);
+  }
+  root.add(joint);
+  return { root, joint };
 }
 
 export function randomLook(rnd = Math.random) {
   const p = (a) => a[Math.floor(rnd() * a.length)];
-  return { skin: p(SKIN), top: p(TOPS), bottom: p(BOTTOMS), shoes: p(SHOES), hat: rnd() < 0.3 ? p(TOPS) : null, scale: 0.92 + rnd() * 0.16 };
+  return {
+    skin: p(SKIN), top: p(TOPS), bottom: p(BOTTOMS), shoes: p(SHOES), hair: p(HAIR), hat: p(HATS),
+    hairStyle: p(HAIRSTYLES), longSleeves: rnd() < 0.35, shorts: rnd() < 0.25, scale: 0.9 + rnd() * 0.18,
+  };
+}
+
+function head(look) {
+  const g = new THREE.Group();
+  g.add(box(0.1, 0.1, 0.1, look.skin, 0, 0.04, 0));
+  g.add(box(0.23, 0.27, 0.24, look.skin, 0, 0.2, 0));
+  g.add(box(0.045, 0.03, 0.02, '#141414', 0.055, 0.23, 0.12));
+  g.add(box(0.045, 0.03, 0.02, '#141414', -0.055, 0.23, 0.12));
+  g.add(box(0.04, 0.06, 0.04, look.skin, 0, 0.18, 0.13));
+  g.add(box(0.08, 0.02, 0.02, '#5a2a22', 0, 0.12, 0.12));
+  const hair = look.hair, hat = look.hat;
+  switch (look.hairStyle) {
+    case 'short':
+      g.add(box(0.25, 0.07, 0.26, hair, 0, 0.35, -0.005));
+      g.add(box(0.25, 0.12, 0.05, hair, 0, 0.28, -0.11));
+      break;
+    case 'long':
+      g.add(box(0.26, 0.08, 0.27, hair, 0, 0.35, 0));
+      g.add(box(0.27, 0.34, 0.07, hair, 0, 0.2, -0.12));
+      break;
+    case 'cap':
+      g.add(box(0.26, 0.09, 0.26, hat, 0, 0.37, 0));
+      g.add(box(0.22, 0.02, 0.14, hat, 0, 0.33, 0.18));
+      break;
+    case 'bucket': {
+      const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 0.12, 10), mat(hat));
+      crown.position.y = 0.38;
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.25, 0.03, 12), mat(hat));
+      brim.position.y = 0.32;
+      g.add(crown, brim);
+      break;
+    }
+    case 'doek':
+      g.add(box(0.28, 0.16, 0.28, hat, 0, 0.39, -0.01));
+      g.add(box(0.14, 0.09, 0.12, hat, 0, 0.49, -0.04));
+      break;
+    case 'beanie':
+      g.add(box(0.26, 0.13, 0.26, hat, 0, 0.37, 0));
+      break;
+    default:
+      break;
+  }
+  return g;
 }
 
 // A jointed low-poly person facing +z, feet at y = 0.
-export function makePerson(look) {
+export function makePerson(look, { shadow = false } = {}) {
   const g = new THREE.Group();
   const body = new THREE.Group();
   g.add(body);
-  const legL = limb(0.17, 0.86, 0.2, look.bottom, 0.9);
-  const legR = limb(0.17, 0.86, 0.2, look.bottom, 0.9);
-  legL.position.x = 0.11;
-  legR.position.x = -0.11;
-  for (const leg of [legL, legR]) {
-    const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.1, 0.3), mat(look.shoes));
-    shoe.position.set(0, -0.85, 0.05);
-    leg.add(shoe);
-  }
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.6, 0.24), mat(look.top));
-  torso.position.y = 1.2;
-  torso.castShadow = true;
-  const neck = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.12), mat(look.skin));
-  neck.position.y = 1.53;
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.27, 0.25), mat(look.skin));
-  head.position.y = 1.7;
-  head.castShadow = true;
-  body.add(torso, neck, head);
-  if (look.hat) {
-    const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.2, 0.12, 8), mat(look.hat));
-    hat.position.y = 1.86;
-    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.02, 8), mat(look.hat));
-    brim.position.y = 1.81;
-    body.add(hat, brim);
-  }
-  const armL = limb(0.12, 0.62, 0.14, look.top, 1.47);
-  const armR = limb(0.12, 0.62, 0.14, look.top, 1.47);
-  armL.position.x = 0.29;
-  armR.position.x = -0.29;
-  for (const arm of [armL, armR]) {
-    const hand = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, 0.12), mat(look.skin));
-    hand.position.y = -0.66;
-    arm.add(hand);
-  }
-  body.add(legL, legR, armL, armR);
+
+  const hips = new THREE.Group();
+  hips.position.y = 0.94;
+  body.add(hips);
+  hips.add(box(0.36, 0.16, 0.22, look.bottom, 0, 0, 0));
+
+  const shin = look.shorts ? look.skin : look.bottom;
+  const legs = [0.1, -0.1].map((x) => {
+    const shoe = box(0.16, 0.09, 0.28, look.shoes, 0, -0.02, 0.05);
+    const l = limb(0.46, 0.44, 0.16, 0.13, look.bottom, shin, shoe);
+    l.root.position.set(x, -0.04, 0);
+    hips.add(l.root);
+    return l;
+  });
+
+  const torso = new THREE.Group();
+  hips.add(torso);
+  torso.add(box(0.38, 0.22, 0.22, look.top, 0, 0.17, 0));
+  torso.add(box(0.46, 0.32, 0.25, look.top, 0, 0.42, 0));
+  const neckHead = head(look);
+  neckHead.position.y = 0.58;
+  torso.add(neckHead);
+
+  const fore = look.longSleeves ? look.top : look.skin;
+  const arms = [0.29, -0.29].map((x) => {
+    const hand = box(0.09, 0.11, 0.11, look.skin, 0, -0.03, 0);
+    const a = limb(0.3, 0.27, 0.12, 0.1, look.top, fore, hand);
+    a.root.position.set(x, 0.54, 0);
+    torso.add(a.root);
+    return a;
+  });
+
   g.scale.setScalar(look.scale);
-  return { group: g, body, legL, legR, armL, armR, phase: Math.random() * 6 };
+  const segments = [hips, torso, neckHead, ...legs.flatMap((l) => [l.root, l.joint]), ...arms.flatMap((a) => [a.root, a.joint])];
+  for (const seg of segments) bake(seg, shadow);
+  return {
+    group: g, body, hips, torso, head: neckHead,
+    legL: legs[0].root, kneeL: legs[0].joint, legR: legs[1].root, kneeR: legs[1].joint,
+    armL: arms[0].root, elbowL: arms[0].joint, armR: arms[1].root, elbowR: arms[1].joint,
+    phase: Math.random() * 6,
+  };
 }
 
-// Swing limbs for a walk/run cycle; speed in m/s.
+const lerp = (a, b, k) => a + (b - a) * k;
+
+// Walk blends into a sprint: forward lean, high knees, bent pumping arms.
 export function animatePerson(p, dt, speed) {
-  const stride = Math.min(1, speed / 1.4);
-  p.phase += dt * (3 + speed * 2.2);
-  const swing = Math.sin(p.phase) * 0.6 * stride;
-  p.legL.rotation.x = swing;
-  p.legR.rotation.x = -swing;
-  p.armL.rotation.x = -swing * 0.9;
-  p.armR.rotation.x = swing * 0.9;
-  p.body.position.y = Math.abs(Math.cos(p.phase)) * 0.05 * stride;
+  const moving = Math.min(1, speed / 0.6);
+  const sprint = Math.max(0, Math.min(1, (speed - 2.6) / 4));
+  p.phase += dt * (2.2 + speed * (1.7 - sprint * 0.55)) * (moving > 0.05 ? 1 : 0);
+  const s = Math.sin(p.phase), c = Math.cos(p.phase);
+  const amp = lerp(0.45, 1.0, sprint) * moving;
+  const k = Math.min(1, dt * 14);
+  const set = (o, axis, v) => { o.rotation[axis] = lerp(o.rotation[axis], v, k); };
+
+  set(p.legL, 'x', -s * amp);
+  set(p.legR, 'x', s * amp);
+  const kneeBend = lerp(0.35, 1.5, sprint) * moving;
+  set(p.kneeL, 'x', 0.08 + Math.max(0, c) * kneeBend);
+  set(p.kneeR, 'x', 0.08 + Math.max(0, -c) * kneeBend);
+  const armAmp = lerp(0.4, 1.1, sprint) * moving;
+  set(p.armL, 'x', s * armAmp);
+  set(p.armR, 'x', -s * armAmp);
+  set(p.elbowL, 'x', -lerp(0.15, 1.45, sprint) - Math.max(0, -s) * 0.3 * sprint);
+  set(p.elbowR, 'x', -lerp(0.15, 1.45, sprint) - Math.max(0, s) * 0.3 * sprint);
+  set(p.armL, 'z', 0.06);
+  set(p.armR, 'z', -0.06);
+  set(p.torso, 'x', lerp(0.03, 0.35, sprint) * moving);
+  set(p.torso, 'y', -s * lerp(0.08, 0.18, sprint) * moving);
+  set(p.hips, 'y', s * 0.08 * moving);
+  p.body.position.y = Math.abs(c) * lerp(0.025, 0.09, sprint) * moving;
+}
+
+// Mid-jump: knees tucked on the way up, legs reaching for the ground on the way down, arms thrown up.
+export function poseAirborne(p, dt, vy) {
+  const k = Math.min(1, dt * 16);
+  const rising = vy > 0 ? 1 : 0.4;
+  const set = (o, axis, v) => { o.rotation[axis] += (v - o.rotation[axis]) * k; };
+  set(p.legL, 'x', -0.9 * rising);
+  set(p.legR, 'x', -0.3 * rising);
+  set(p.kneeL, 'x', 1.4 * rising);
+  set(p.kneeR, 'x', 0.9 * rising);
+  set(p.armL, 'x', -2.4);
+  set(p.armR, 'x', -2.1);
+  set(p.armL, 'z', 0.35);
+  set(p.armR, 'z', -0.35);
+  set(p.elbowL, 'x', -0.4);
+  set(p.elbowR, 'x', -0.4);
+  set(p.torso, 'x', 0.15);
+  p.body.position.y = 0;
 }
 
 export function knockDown(p, amount) {
   p.body.rotation.x = -Math.PI / 2 * amount;
   p.body.position.y = 0.15 * amount;
+}
+
+// Seated on a bike: thighs forward, knees bent, hands on the bars.
+export function poseRider(p, lean = 0.1) {
+  p.legL.rotation.set(-1.45, 0, 0.12);
+  p.legR.rotation.set(-1.45, 0, -0.12);
+  p.kneeL.rotation.x = 1.55;
+  p.kneeR.rotation.x = 1.55;
+  p.torso.rotation.set(lean, 0, 0);
+  p.armL.rotation.set(-1.1 - lean, 0, 0.15);
+  p.armR.rotation.set(-1.1 - lean, 0, -0.15);
+  p.elbowL.rotation.x = -0.35;
+  p.elbowR.rotation.x = -0.35;
+  p.hips.rotation.y = 0;
+  p.body.position.y = 0;
+  p.body.rotation.x = 0;
+}
+
+export function clearPose(p) {
+  for (const o of [p.legL, p.legR, p.kneeL, p.kneeR, p.torso, p.armL, p.armR, p.elbowL, p.elbowR, p.hips]) o.rotation.set(0, 0, 0);
 }

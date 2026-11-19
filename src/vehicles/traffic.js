@@ -174,7 +174,9 @@ class AICar {
     const dx = target.x - this.pos.x, dz = target.z - this.pos.z;
     let diff = Math.atan2(dx, dz) - this.heading;
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-    if (dist > 1) this.heading += Math.max(-1.6 * dt, Math.min(1.6 * dt, diff * 3 * dt));
+    const turn = dist > 1 ? Math.max(-1.6 * dt, Math.min(1.6 * dt, diff * 3 * dt)) : 0;
+    this.heading += turn;
+    this.yawRate = dt > 0 ? turn / dt : 0;
 
     let limit = this.cruise * (Math.abs(diff) > 0.4 ? 0.45 : 1);
     if (held) limit = Math.min(limit, Math.max(0, (dist - 1.2) * 1.3));
@@ -208,7 +210,9 @@ class AICar {
     const hF = heightAt(this.pos.x + fx * hl, this.pos.z + fz * hl);
     const hB = heightAt(this.pos.x - fx * hl, this.pos.z - fz * hl);
     g.position.set(this.pos.x, (hF + hB) / 2 + 0.02, this.pos.z);
-    g.rotation.set(-Math.atan2(hF - hB, this.spec.length), this.heading, 0, 'YXZ');
+    if (this.model.rider) this.model.rider.group.visible = this.nearPlayer !== false;
+    const lean = this.spec.bike ? Math.max(-0.6, Math.min(0.6, -(this.yawRate || 0) * this.speed * 0.09)) : 0;
+    g.rotation.set(-Math.atan2(hF - hB, this.spec.length), this.heading, lean, 'YXZ');
     const spin = (this.speed * dt) / this.spec.radius;
     for (const w of this.model.wheels.all) w.rotation.x += spin;
   }
@@ -286,7 +290,7 @@ export function createTraffic(scene, colliders, edges, count = 80, roads = null)
   const updateRobots = createRobots(scene, colliders, addSignals(nodes), roads);
   const cityEdges = list.filter((e) => e.width >= 10);
   const cars = [];
-  const types = ['golf', 'golf', 'golf', 'taxi', 'taxi', 'bakkie', 'bakkie', 'police', 'golf', 'taxi'];
+  const types = ['golf', 'golf', 'taxi', 'taxi', 'bakkie', 'bakkie', 'police', 'golf', 'taxi', 'scooter', 'scooter', 'superbike', 'sports', 'golf'];
   for (let k = 0; k < count; k++) {
     const pool = k % 2 === 0 ? cityEdges : list;
     const e = pool[Math.floor(rand() * pool.length)];
@@ -366,7 +370,11 @@ export function createTraffic(scene, colliders, edges, count = 80, roads = null)
     update(dt, player, onImpact, { signalsOff = false, lights = 0, walker = null } = {}) {
       time += dt;
       const env = { time, signalsOff };
-      for (const c of cars) c.update(dt, cars, player || walker, env);
+      const focus = player || walker;
+      for (const c of cars) {
+        if (focus) c.nearPlayer = Math.abs(c.pos.x - focus.pos.x) < 90 && Math.abs(c.pos.z - focus.pos.z) < 90;
+        c.update(dt, cars, focus, env);
+      }
       if (player) collidePlayer(player, onImpact);
       updateRobots(time, signalsOff);
       pools.material.opacity = lights * 0.75;

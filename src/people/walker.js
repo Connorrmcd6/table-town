@@ -1,22 +1,28 @@
 import * as THREE from 'three';
 import { heightAt } from '../world/heightmap.js';
-import { makePerson, animatePerson, knockDown } from './person.js';
+import { makePerson, animatePerson, knockDown, poseAirborne } from './person.js';
 import { vehicleCircles } from './pedestrians.js';
 
-const WALK = 2.2, RUN = 6;
-export const PLAYER_LOOK = { skin: '#7a5038', top: '#8a1c2b', bottom: '#1b1b1b', shoes: '#f4f4f0', hat: '#d9c38a', scale: 1 };
+const SPRINT = 8.5;
+const JUMP_SPEED = 6, GRAVITY = 18;
+export const PLAYER_LOOK = {
+  skin: '#7a5038', top: '#8a1c2b', bottom: '#1b1b1b', shoes: '#f4f4f0', hair: '#120c08', hat: '#d9c38a',
+  hairStyle: 'bucket', longSleeves: false, shorts: false, scale: 1,
+};
 
 // The player on foot: moves relative to the camera, turns to face where it walks.
 export class Walker {
   constructor(scene) {
-    this.model = makePerson(PLAYER_LOOK);
+    this.model = makePerson(PLAYER_LOOK, { shadow: true });
     this.model.type = 'person';
     this.spec = { length: 0.6, width: 0.6, radius: 0.35 };
-    this.cameraProfile = { dist: 5.5, height: 2.4, look: 1.4 };
+    this.cameraProfile = { dist: 5.5, height: 2.4, look: 1.4, free: true };
     this.pos = new THREE.Vector3();
     this.vel = new THREE.Vector2();
     this.heading = 0;
     this.down = 0;
+    this.vy = 0;
+    this.airborne = false;
     this.active = false;
     this.model.group.visible = false;
     scene.add(this.model.group);
@@ -31,6 +37,8 @@ export class Walker {
     this.heading = heading;
     this.vel.set(0, 0);
     this.down = 0;
+    this.vy = 0;
+    this.airborne = false;
     this.sync(0);
   }
 
@@ -44,7 +52,11 @@ export class Walker {
     this.vel.copy(dir).multiplyScalar(Math.min(strength, 9));
   }
 
-  update(dt, input, viewYaw, { colliders, vehicles }) {
+  update(dt, input, viewYaw, { colliders, vehicles, jump = false }) {
+    if (jump && !this.airborne && this.down <= 0) {
+      this.vy = JUMP_SPEED;
+      this.airborne = true;
+    }
     if (this.down > 0) {
       this.down -= dt;
       this.vel.multiplyScalar(Math.exp(-3 * dt));
@@ -54,14 +66,14 @@ export class Walker {
       const fx = Math.sin(viewYaw), fz = Math.cos(viewYaw);
       let mx = fx * fwd + fz * side, mz = fz * fwd - fx * side;
       const len = Math.hypot(mx, mz);
-      const target = len > 0 ? (input.run ? RUN : WALK) : 0;
+      const target = len > 0 ? SPRINT : 0;
       if (len > 0) {
         mx /= len; mz /= len;
         let d = Math.atan2(mx, mz) - this.heading;
         d = Math.atan2(Math.sin(d), Math.cos(d));
         this.heading += d * Math.min(1, dt * 12);
       }
-      this.vel.lerp(new THREE.Vector2(mx * target, mz * target), Math.min(1, dt * 10));
+      this.vel.lerp(new THREE.Vector2(mx * target, mz * target), Math.min(1, dt * 8));
     }
     this.pos.x += this.vel.x * dt;
     this.pos.z += this.vel.y * dt;
@@ -78,7 +90,16 @@ export class Walker {
         }
       }
     }
-    this.pos.y = heightAt(this.pos.x, this.pos.z);
+    const ground = heightAt(this.pos.x, this.pos.z);
+    if (this.airborne) {
+      this.vy -= GRAVITY * dt;
+      this.pos.y += this.vy * dt;
+      if (this.pos.y <= ground) {
+        this.pos.y = ground;
+        this.vy = 0;
+        this.airborne = false;
+      }
+    } else this.pos.y = ground;
     this.sync(dt);
   }
 
@@ -89,7 +110,8 @@ export class Walker {
     if (this.down > 0) knockDown(this.model, Math.min(1, this.down * 2));
     else {
       knockDown(this.model, 0);
-      animatePerson(this.model, dt, this.speed);
+      if (this.airborne) poseAirborne(this.model, dt, this.vy);
+      else animatePerson(this.model, dt, this.speed);
     }
   }
 }

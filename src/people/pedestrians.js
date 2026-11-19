@@ -137,6 +137,7 @@ export function createPedestrians(scene, rects, count = 50) {
       p.pos.y = heightAt(p.pos.x, p.pos.z) + onPlatform;
       p.model.group.position.copy(p.pos);
       p.model.group.rotation.y = p.heading;
+      p.model.group.visible = Math.abs(p.pos.x - center.x) < 90 && Math.abs(p.pos.z - center.z) < 90;
     }
   }
 

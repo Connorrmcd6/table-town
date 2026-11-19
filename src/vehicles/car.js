@@ -15,6 +15,8 @@ export class Car {
     this.pitch = 0;
     this.roll = 0;
     this.lastImpact = 0;
+    this.yawRate = 0;
+    this.lean = 0;
     this.sync();
   }
 
@@ -56,7 +58,7 @@ export class Car {
       else vF -= spec.accel * 0.6 * Math.max(0, 1 + vF / 9) * dt;
     }
     if (!input.throttle && !input.brake) vF -= Math.sign(vF) * Math.min(Math.abs(vF), 1.6 * dt);
-    vF -= vF * Math.abs(vF) * 0.0015 * dt;
+    vF -= vF * Math.abs(vF) * (spec.drag ?? 0.0015) * dt;
 
     const ahead = heightAt(this.pos.x + f.x * 1.5, this.pos.z + f.y * 1.5);
     const behind = heightAt(this.pos.x - f.x * 1.5, this.pos.z - f.y * 1.5);
@@ -67,7 +69,7 @@ export class Car {
     const grip = input.handbrake ? 1.2 : 7;
     vR *= Math.exp(-grip * dt);
 
-    const targetSteer = input.steer * 0.6 / (1 + Math.abs(vF) / 14);
+    const targetSteer = (input.steer * 0.6 * (spec.steerScale ?? 1)) / (1 + Math.abs(vF) / 14);
     this.steer += (targetSteer - this.steer) * Math.min(1, dt * 8);
     let yaw = (vF / spec.wheelbase) * Math.tan(this.steer);
     if (input.handbrake) yaw *= 1.5;
@@ -75,6 +77,7 @@ export class Car {
     this.vel.set(f.x * vF + r.x * vR, f.y * vF + r.y * vR);
     if (env.wind) this.vel.addScaledVector(env.wind, dt);
     this.heading += yaw * dt;
+    this.yawRate = yaw;
 
     const prev = this.pos.clone();
     this.pos.x += this.vel.x * dt;
@@ -132,7 +135,11 @@ export class Car {
     const g = this.model.group;
     g.position.copy(this.pos);
     g.position.y = (hF + hB + hL + hR) / 4 + 0.02;
-    g.rotation.set(-this.pitch, this.heading, -this.roll, 'YXZ');
+    if (spec.bike) {
+      const target = Math.max(-0.75, Math.min(0.75, -this.yawRate * Math.abs(this.speed) * 0.09));
+      this.lean += (target - this.lean) * Math.min(1, dt * 6);
+    }
+    g.rotation.set(-this.pitch, this.heading, -this.roll + this.lean, 'YXZ');
     const spin = (this.speed * dt) / spec.radius;
     for (const w of this.model.wheels.all) w.rotation.x += spin;
     for (const p of this.model.wheels.front) p.rotation.y = this.steer;

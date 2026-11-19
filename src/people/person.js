@@ -339,6 +339,19 @@ export function poseArms(p, arms) {
       p.kneeL.rotation.x = 0.5 * (1 - hit);
       p.kneeR.rotation.x = 0.5 * (1 - hit);
       break;
+    case 'batFore':
+    case 'batBack': {
+      // Two hands on the bat, swept flat across the body: forehand right-to-left, backhand back again.
+      const e = Math.min(1, arms.k ?? 0), s = e * e * (3 - 2 * e);
+      const from = arms.mode === 'batFore' ? -1.4 : 0.8, to = arms.mode === 'batFore' ? 0.8 : -1.4;
+      const a = from + (to - from) * s;
+      p.armR.rotation.set(-Math.PI / 2 + 0.25, 0, a);
+      p.elbowR.rotation.x = -0.25;
+      p.armL.rotation.set(-Math.PI / 2 + 0.35, 0, a + 0.55);
+      p.elbowL.rotation.x = -0.6;
+      p.torso.rotation.set(0.1, a * 0.5, 0);
+      break;
+    }
     case 'kick':
       guard(p, 1);
       guard(p, -1);
@@ -386,6 +399,32 @@ export function poseDead(p, t, side = 1) {
   p.elbowR.rotation.x = -0.2;
   p.body.rotation.set(-Math.PI / 2 * ease, 0, side * 0.2 * ease);
   p.body.position.set(0, 0.15 * ease - 0.35 * buckle * (1 - ease), 0);
+}
+
+// The player's other weapons in the right hand: machine gun, bat and a C4 brick (the pistol comes from addPistol).
+export function addArsenal(p) {
+  const dark = new THREE.MeshLambertMaterial({ color: '#202124' });
+  const smg = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.36, 0.1), dark);
+  body.position.set(0, -0.12, 0.04);
+  const mag = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.16), dark);
+  mag.position.set(0, -0.08, -0.08);
+  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.05), dark);
+  stock.position.set(0, 0.12, 0.05);
+  const smgMuzzle = new THREE.Object3D();
+  smgMuzzle.position.set(0, -0.32, 0.04);
+  smg.add(body, mag, stock, smgMuzzle);
+  smg.position.set(0, -0.3, 0.02);
+  const bat = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.03, 0.85, 8).translate(0, -0.38, 0), new THREE.MeshLambertMaterial({ color: '#b8854a' }));
+  bat.position.set(0, -0.27, 0.02);
+  const c4 = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.08, 0.12), new THREE.MeshLambertMaterial({ color: '#3d4a2a' }));
+  c4.position.set(0, -0.33, 0.04);
+  for (const m of [smg, bat, c4]) {
+    m.visible = false;
+    p.elbowR.add(m);
+  }
+  p.held = { pistol: p.gun, smg, bat, c4 };
+  p.smgMuzzle = smgMuzzle;
 }
 
 // Seated on a bike: thighs forward, knees bent, hands on the bars.

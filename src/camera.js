@@ -29,8 +29,9 @@ export class ChaseCamera {
     canvas.addEventListener('click', () => {
       if (this.enabled && document.pointerLockElement !== canvas) lockPointer(canvas);
     });
+    this.lockLook = false;
     document.addEventListener('mousemove', (e) => {
-      if (document.pointerLockElement !== canvas) return;
+      if (document.pointerLockElement !== canvas || this.lockLook) return;
       this.lookYaw -= e.movementX * 0.004;
       this.lookPitch = Math.max(-0.35, Math.min(1.1, this.lookPitch + e.movementY * 0.003));
       this.idle = 0;

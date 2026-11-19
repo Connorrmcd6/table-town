@@ -76,6 +76,7 @@ export function createWrecks(scene) {
         char(v);
         w.flames.forEach((f) => f.scale.setScalar(7));
         w.blast = 0.25;
+        flash(v.pos);
         onBlast(v, BLAST_RADIUS);
       }
       if (w.state === 'burnt') {
@@ -88,5 +89,38 @@ export function createWrecks(scene) {
     }
   }
 
-  return { damage, update, ignite };
+  // Blow a vehicle up right now (C4): skips the burning stage.
+  function explode(v) {
+    if (!v.wreck) ignite(v);
+    if (v.wreck.state === 'burning') v.wreck.t = BURN_TIME + 0.001;
+  }
+
+  const blasts = [];
+  // A fireball at a point: grows and fades over half a second.
+  function flash(pos) {
+    const fire = new THREE.Sprite(flameMat.clone());
+    const smoke = new THREE.Sprite(smokeMat.clone());
+    fire.position.copy(pos).y += 1;
+    smoke.position.copy(pos).y += 2;
+    scene.add(fire, smoke);
+    blasts.push({ fire, smoke, t: 0 });
+  }
+
+  function updateBlasts(dt) {
+    for (const b of [...blasts]) {
+      b.t += dt;
+      const k = b.t / 0.55;
+      b.fire.scale.setScalar(3 + k * 12);
+      b.fire.material.opacity = Math.max(0, 1 - k);
+      b.smoke.scale.setScalar(4 + k * 10);
+      b.smoke.position.y += dt * 3;
+      b.smoke.material.opacity = Math.max(0, 0.6 * (1 - k * 0.6));
+      if (k >= 1.6) {
+        scene.remove(b.fire, b.smoke);
+        blasts.splice(blasts.indexOf(b), 1);
+      }
+    }
+  }
+
+  return { damage, update: (dt, onBlast) => { update(dt, onBlast); updateBlasts(dt); }, ignite, explode, flash };
 }

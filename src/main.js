@@ -8,8 +8,8 @@ import { createStreetlights } from './world/streetlights.js';
 import { districtAt, w as toWorld } from './world/heightmap.js';
 import { ColliderGrid } from './collision.js';
 import { playerTaxi, makeVehicle, seatRider } from './vehicles/models.js';
-import { clearPose, addPistol } from './people/person.js';
-import { createWeapons } from './weapons.js';
+import { clearPose, addPistol, addArsenal } from './people/person.js';
+import { createWeapons, WEAPONS, WEAPON_ORDER } from './weapons.js';
 import { createWrecks, vehicleHp, vehicleMaxHp } from './vehicles/wreck.js';
 import { createPickups, createHospitalMarker } from './world/pickups.js';
 import { Car } from './vehicles/car.js';
@@ -21,7 +21,7 @@ import { Walker, roofHeight } from './people/walker.js';
 import { createPedestrians, vehicleCircles } from './people/pedestrians.js';
 import { createPolice, collideCars, placeOnRoad } from './police.js';
 import { ChaseCamera, lockPointer } from './camera.js';
-import { readDriving, wasPressed, isDown, releaseAll, endFrame } from './input.js';
+import { readDriving, wasPressed, isDown, takeMouse, releaseAll, endFrame } from './input.js';
 import { createCheatPrompt } from './cheats.js';
 import { createHud, streetAt } from './hud.js';
 import * as audio from './audio.js';
@@ -93,6 +93,7 @@ function build() {
   headlight.target.position.set(0, 0, 22);
   const walker = new Walker(scene);
   addPistol(walker.model);
+  addArsenal(walker.model);
   walker.onLand = (drop) => damage((drop - 4) * 7);
   const weapons = createWeapons(scene);
   const wrecks = createWrecks(scene);
@@ -201,8 +202,8 @@ function applyCheat(cheat) {
       police.addHeat(90);
       break;
     case 'TSOTSI':
-      world.weapons.state.ammo += 100;
-      world.weapons.state.current = 'pistol';
+      world.weapons.refill();
+      world.weapons.select('smg');
       break;
   }
   applyLighting();
@@ -328,8 +329,7 @@ function respawnAt(spot, kind) {
   const { police, walker, weapons } = world;
   police.clear();
   if (kind === 'busted') {
-    weapons.state.ammo = 0;
-    weapons.state.current = 'fists';
+    weapons.disarm();
   }
   if (world.vehicle) {
     dismount(world.vehicle);
@@ -472,25 +472,38 @@ function shootCar(v, kind) {
   if (!v.panic) v.provoke(Math.random() < 0.35 ? 'ram' : 'flee', 8 + Math.random() * 6);
 }
 
-function attack(armed) {
+function attack(current) {
   const { walker, weapons, peds, police, colliders } = world;
-  const trigger = armed ? isDown('Mouse0') : wasPressed('Mouse0');
+  const def = WEAPONS[current];
+  if (def.type === 'throw') {
+    if (wasPressed('Mouse2')) for (const c of weapons.detonate()) c4Blast(c.pos, c.car);
+    if (!wasPressed('Mouse0')) return;
+    const dir = new THREE.Vector3();
+    camera.getWorldDirection(dir);
+    walker.heading = chase.viewYaw;
+    const from = new THREE.Vector3(walker.pos.x + Math.sin(walker.heading) * 0.5, walker.pos.y + 1.6, walker.pos.z + Math.cos(walker.heading) * 0.5);
+    if (weapons.throwC4(from, dir)) weapons.state.strike = { kind: 'cross', k: 0 };
+    return;
+  }
+  const gun = def.type === 'gun';
+  const trigger = gun ? isDown('Mouse0') : wasPressed('Mouse0');
   if (!trigger) return;
   const targets = combatTargets();
-  if (armed) {
+  if (gun) {
     walker.heading = chase.viewYaw;
-    const shot = weapons.shoot({ camera, shooter: walker.pos, muzzle: walker.model.muzzle, targets, colliders });
+    const muzzle = current === 'smg' ? walker.model.smgMuzzle : walker.model.muzzle;
+    const shot = weapons.shoot({ camera, shooter: walker.pos, muzzle, targets, colliders });
     if (!shot) return;
-    audio.gunshot();
+    audio.gunshot(current === 'smg' ? 0.7 : 1);
     peds.scare(walker.pos.x, walker.pos.z, 35);
     world.traffic.scare(walker.pos.x, walker.pos.z, 25);
     if (police.nearCop(walker.pos.x, walker.pos.z, 50)) police.raiseTo(2);
-    else police.addHeat(8);
+    else police.addHeat(current === 'smg' ? 3 : 8);
     landHit(shot.target, shot.damage, shot.dir, 'shot');
   } else {
     const people = targets.filter((t) => t.kind === 'ped' || t.kind === 'cop');
     assistPunch(people);
-    const hit = weapons.punch({ pos: walker.pos, heading: walker.heading, targets: people });
+    const hit = weapons.melee({ pos: walker.pos, heading: walker.heading, targets: people });
     if (hit?.target) {
       audio.punch();
       landHit(hit.target, hit.damage, hit.dir, 'punch', hit.knock);
@@ -617,12 +630,26 @@ function hurtVehicle(v, amount) {
 
 // A burning wreck going up: everyone close by gets hurt, and nearby vehicles take a beating too.
 function blast(v, radius) {
-  const { walker, peds, police, traffic, parked } = world;
-  audio.crash(30);
   if (v === world.vehicle) {
+    audio.crash(30);
     damage(500);
     return;
   }
+  explosionDamage(v.pos, radius, v, false);
+}
+
+// C4 going off: anything it's stuck to, and any vehicle right next to it, goes up on the spot.
+function c4Blast(pos, car) {
+  world.wrecks.flash(pos);
+  if (car) world.wrecks.explode(car);
+  explosionDamage(pos, 8, car, true);
+  crime(60, pos.x, pos.z, 60);
+}
+
+function explosionDamage(at, radius, source, instant) {
+  const { walker, peds, police, traffic, parked } = world;
+  const v = { pos: at };
+  audio.crash(30);
   if (state.onFoot) {
     const dx = walker.pos.x - v.pos.x, dz = walker.pos.z - v.pos.z, d = Math.hypot(dx, dz);
     if (d < radius) {
@@ -636,13 +663,17 @@ function blast(v, radius) {
   }
   for (const o of police.officers.list) {
     const dx = o.pos.x - v.pos.x, dz = o.pos.z - v.pos.z, d = Math.hypot(dx, dz);
-    if (d < radius) police.officers.damage(o, 120 * (1 - d / radius), new THREE.Vector2(dx / (d || 1), dz / (d || 1)), { knock: true });
+    if (d >= radius) continue;
+    const dir = new THREE.Vector2(dx / (d || 1), dz / (d || 1));
+    if (instant) hurtCop(o, 120 * (1 - d / radius), dir, 'shot', true);
+    else police.officers.damage(o, 120 * (1 - d / radius), dir, { knock: true });
   }
   const others = [...traffic.cars, ...parked, ...police.chasers.map((c) => c.car), ...(world.vehicle ? [world.vehicle] : [])];
   for (const o of others) {
-    if (o === v) continue;
+    if (o === source) continue;
     const d = Math.hypot(o.pos.x - v.pos.x, o.pos.z - v.pos.z);
-    if (d < radius) hurtVehicle(o, 70 * (1 - d / radius));
+    if (instant && d < radius * 0.6) world.wrecks.explode(o);
+    else if (d < radius) hurtVehicle(o, 70 * (1 - d / radius));
   }
 }
 
@@ -657,6 +688,58 @@ function clearWrecks(dt, me) {
       scene.remove(c.model.group);
     }
   }
+}
+
+// Hold Q for the weapon wheel (time slows, the mouse picks a slot, release equips); a quick tap just cycles.
+const picker = { held: 0, open: false, x: 0, y: 0, sel: 0 };
+
+function wheelSlots() {
+  const { weapons } = world;
+  return WEAPON_ORDER.map((w) => {
+    const ammo = w === 'c4' ? weapons.state.ammo.c4 + (weapons.charges.length ? ` (${weapons.charges.length} set)` : '') : weapons.state.ammo[w] ?? null;
+    return { label: WEAPONS[w].label, ammo, empty: !weapons.has(w) };
+  });
+}
+
+function closePicker() {
+  picker.open = false;
+  chase.lockLook = false;
+  hud.wheel(null);
+}
+
+function updatePicker(dt) {
+  const { weapons } = world;
+  if (isDown('KeyQ')) {
+    picker.held += dt;
+    if (!picker.open && picker.held > 0.18) {
+      picker.open = true;
+      chase.lockLook = true;
+      picker.x = picker.y = 0;
+      picker.sel = WEAPON_ORDER.indexOf(weapons.state.current);
+      takeMouse();
+    }
+  } else if (picker.held > 0) {
+    if (picker.open) {
+      weapons.select(WEAPON_ORDER[picker.sel]);
+      closePicker();
+    } else weapons.cycle();
+    picker.held = 0;
+  }
+  if (!picker.open) return;
+  const m = takeMouse();
+  picker.x += m.x;
+  picker.y += m.y;
+  const len = Math.hypot(picker.x, picker.y);
+  if (len > 90) {
+    picker.x *= 90 / len;
+    picker.y *= 90 / len;
+  }
+  if (len > 20) {
+    const a = Math.atan2(picker.y, picker.x) + Math.PI / 2;
+    const n = WEAPON_ORDER.length;
+    picker.sel = ((Math.round((a / (Math.PI * 2)) * n) % n) + n) % n;
+  }
+  hud.wheel(wheelSlots(), picker.sel);
 }
 
 const camRay = new THREE.Vector3();
@@ -689,7 +772,9 @@ function tick(dt) {
         const target = nearestEnterable();
         if (target) enterVehicle(target);
       }
-      if (wasPressed('KeyQ') || wasPressed('WheelUp') || wasPressed('WheelDown')) world.weapons.cycle();
+      if (wasPressed('WheelUp')) world.weapons.cycle(-1);
+      if (wasPressed('WheelDown')) world.weapons.cycle(1);
+      updatePicker(dt);
     } else {
       if (wasPressed('KeyH')) audio.hoot();
       if (wasPressed('KeyG') && world.vehicle.model.type === 'taxi') {
@@ -701,7 +786,8 @@ function tick(dt) {
     }
   }
 
-  const sdt = dt * state.timeScale;
+  if (picker.open && (!active || !state.onFoot)) closePicker();
+  const sdt = dt * state.timeScale * (picker.open ? 0.3 : 1);
   windT += sdt;
   if (state.windOn) {
     const gust = 3.5 + Math.sin(windT * 0.7) * 2 + Math.sin(windT * 2.3) * 1.2;
@@ -729,16 +815,18 @@ function tick(dt) {
 
   const cops = police.chasers.map((c) => c.car);
   const { weapons } = world;
-  weapons.update(sdt);
-  const armed = state.onFoot && weapons.state.current === 'pistol';
-  const aiming = armed && active && (isDown('Mouse2') || weapons.state.aimT > 0);
-  walker.model.gun.visible = armed;
+  weapons.update(sdt, { vehicles: [...traffic.cars, ...cops, ...parked, ...(vehicle ? [vehicle] : [])], colliders });
+  const current = weapons.state.current;
+  const kind = WEAPONS[current].type;
+  const armed = state.onFoot && kind === 'gun';
+  const aiming = state.onFoot && active && !picker.open && ((armed && (isDown('Mouse2') || weapons.state.aimT > 0)) || kind === 'throw');
+  for (const [w, mesh] of Object.entries(walker.model.held)) mesh.visible = state.onFoot && w === current && (w !== 'c4' || weapons.state.ammo.c4 > 0);
   walker.cameraProfile = aiming ? AIM_CAMERA : FOOT_CAMERA;
   if (state.onFoot) {
     walker.update(sdt, input, chase.viewYaw, { colliders, vehicles: [...traffic.cars, ...cops, ...parked], jump: active && wasPressed('Space'), aiming });
     hitByTraffic(walker, [...traffic.cars, ...cops]);
-    if (active && !walker.busy && !walker.airborne) attack(armed);
-    walker.arms = !walker.busy && aiming ? { mode: 'aim', pitch: chase.aimPitch }
+    if (active && !picker.open && !walker.busy && !walker.airborne) attack(current);
+    walker.arms = !walker.busy && aiming && armed ? { mode: 'aim', pitch: chase.aimPitch }
       : weapons.state.strike ? { mode: weapons.state.strike.kind, k: weapons.state.strike.k } : null;
   } else if (vehicle) runOverCops(vehicle);
   traffic.update(sdt, vehicle, onImpact, { signalsOff: state.loadshedding, lights: sky.state.lights, walker: state.onFoot && !walker.dead ? walker : null, grid: colliders });
@@ -801,7 +889,8 @@ function tick(dt) {
   }
   hud.update(dt, { cash: state.cash, minutes: state.minutes, kmh: vehicle ? Math.abs(vehicle.speed) * 3.6 : null, area, road });
   hud.status({ health: state.health, stars: police.state.stars, seen: police.state.seen, car: vehicle ? vehicleHp(vehicle) / vehicleMaxHp(vehicle) : null });
-  hud.weapon(state.onFoot ? (armed ? `PISTOL ${weapons.state.ammo}` : 'FISTS') : '', aiming);
+  const ammo = weapons.state.ammo[current];
+  hud.weapon(state.onFoot ? `${WEAPONS[current].label}${ammo !== undefined ? ` ${ammo}` : ''}` : '', aiming);
   let promptText = null;
   if (state.onFoot && active) {
     const t = nearestEnterable();

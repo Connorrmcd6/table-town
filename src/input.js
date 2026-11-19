@@ -23,6 +23,20 @@ window.addEventListener('wheel', (e) => {
   if (document.pointerLockElement) pressed.add(e.deltaY > 0 ? 'WheelDown' : 'WheelUp');
 });
 
+const mouse = { x: 0, y: 0 };
+window.addEventListener('mousemove', (e) => {
+  if (!document.pointerLockElement) return;
+  mouse.x += e.movementX;
+  mouse.y += e.movementY;
+});
+
+// Mouse movement since the last call (pointer-locked only).
+export function takeMouse() {
+  const out = { x: mouse.x, y: mouse.y };
+  mouse.x = mouse.y = 0;
+  return out;
+}
+
 export function isDown(code) {
   return keys.has(code);
 }

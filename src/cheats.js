@@ -9,7 +9,7 @@ export const CHEATS = [
   { code: 'BRIBE', label: 'Cooldrink for the officer. Wanted level cleared' },
   { code: 'VETKOEK', label: 'Full health' },
   { code: 'TROUBLE', label: 'The cops want a word' },
-  { code: 'TSOTSI', label: 'Pistol and 100 rounds' },
+  { code: 'TSOTSI', label: 'Ammo for every gun, plus more C4' },
 ];
 
 export function findCheat(text) {

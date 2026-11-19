@@ -82,7 +82,7 @@ PS2-era geometry with modern lighting: warm golden-hour sky, haze, flat colours 
 
 - AI traffic drives through cars you've left parked.
 - AI cars can briefly overlap at junctions.
-- Only fists and a pistol so far; no weapon pickups or shops.
+- Weapons (fists, bat, pistol, machine gun, C4) are all carried from the start; no pickups or shops yet.
 - Bo-Kaap houses sit right on the pavement, so it has no low walls to vault; the suburbs, CBD and parks do.
 - The hospital marker has no radar blip yet.
 - Cops on foot don't climb, so a rooftop is a decent (if temporary) hiding spot.

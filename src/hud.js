@@ -9,6 +9,8 @@ export function createHud() {
   const healthFill = $('healthfill'), wanted = $('wanted'), promptEl = $('prompt'), big = $('bigtext');
   const weaponEl = $('weapon'), crosshair = $('crosshair');
   const carBar = $('carhealth'), carFill = $('carhealthfill');
+  const wheelEl = $('wheel');
+  let wheelSlots = null;
   let lastWeapon = null;
   const stars = [...wanted.children];
   let lastStars = -1, lastPrompt = null;
@@ -67,6 +69,29 @@ export function createHud() {
       lastWeapon = text;
     }
     crosshair.classList.toggle('show', aiming);
+  }
+
+  // Radial weapon picker: slots is [{ label, ammo, empty }] laid out clockwise from the top; null hides it.
+  function wheel(slots, selected) {
+    wheelEl.classList.toggle('show', !!slots);
+    if (!slots) return;
+    if (!wheelSlots) {
+      wheelSlots = slots.map((_, i) => {
+        const el = document.createElement('div');
+        el.className = 'slot';
+        const a = -Math.PI / 2 + (i / slots.length) * Math.PI * 2;
+        el.style.left = `${50 + Math.cos(a) * 34}%`;
+        el.style.top = `${50 + Math.sin(a) * 34}%`;
+        wheelEl.appendChild(el);
+        return el;
+      });
+    }
+    slots.forEach((s, i) => {
+      const el = wheelSlots[i];
+      el.innerHTML = `${s.label}${s.ammo !== null ? `<small>${s.ammo}</small>` : ''}`;
+      el.classList.toggle('on', i === selected);
+      el.classList.toggle('empty', s.empty);
+    });
   }
 
   function prompt(text) {
@@ -139,7 +164,7 @@ export function createHud() {
     rctx.stroke();
   }
 
-  return { update, notify, say, drawRadar, status, prompt, bigText, weapon };
+  return { update, notify, say, drawRadar, status, prompt, bigText, weapon, wheel };
 }
 
 const NAMED = () => ROADS.filter((r) => r.name);

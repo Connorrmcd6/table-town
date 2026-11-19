@@ -82,5 +82,6 @@ PS2-era geometry with modern lighting: warm golden-hour sky, haze, flat colours 
 
 - AI traffic drives through cars you've left parked.
 - AI cars can briefly overlap at junctions.
-- Cops stay in their cars; no weapons yet, so crimes are all vehicle-based.
-- No climbing onto cars or walls.
+- Only fists and a pistol so far; no weapon pickups or shops.
+- Cops on foot don't climb, so a rooftop is a decent (if temporary) hiding spot.
+- Some cop cars stall in Bo-Kaap's narrow streets; their officers then finish the chase on foot.

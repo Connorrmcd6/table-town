@@ -332,7 +332,7 @@ export function createTraffic(scene, colliders, edges, count = 80, roads = null)
           player.vel.addScaledVector(n, -vn * 1.1);
           player.vel.multiplyScalar(0.9);
           c.speed *= 0.3;
-          if (-vn > 3) onImpact(-vn);
+          if (-vn > 3) onImpact(-vn, c);
         }
         break;
       }

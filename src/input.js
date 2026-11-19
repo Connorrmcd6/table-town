@@ -11,6 +11,21 @@ window.addEventListener('keydown', (e) => {
 });
 window.addEventListener('keyup', (e) => keys.delete(e.code));
 window.addEventListener('blur', () => keys.clear());
+window.addEventListener('mousedown', (e) => {
+  if (!document.pointerLockElement) return;
+  const code = `Mouse${e.button}`;
+  if (!keys.has(code)) pressed.add(code);
+  keys.add(code);
+});
+window.addEventListener('mouseup', (e) => keys.delete(`Mouse${e.button}`));
+window.addEventListener('contextmenu', (e) => e.preventDefault());
+window.addEventListener('wheel', (e) => {
+  if (document.pointerLockElement) pressed.add(e.deltaY > 0 ? 'WheelDown' : 'WheelUp');
+});
+
+export function isDown(code) {
+  return keys.has(code);
+}
 
 export function readDriving() {
   const left = keys.has('KeyA') || keys.has('ArrowLeft');

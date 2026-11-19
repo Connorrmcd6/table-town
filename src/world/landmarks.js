@@ -142,7 +142,7 @@ function createNoonGun(scene, colliders) {
   g.add(hut, barrel);
   g.position.set(x, h, z);
   scene.add(g);
-  colliders.push({ minX: x - 4, maxX: x + 4, minZ: z - 13, maxZ: z - 7 });
+  colliders.push({ minX: x - 4, maxX: x + 4, minZ: z - 13, maxZ: z - 7, top: h + 4 });
 }
 
 function createCableCar(scene) {

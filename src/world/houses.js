@@ -54,8 +54,9 @@ export function addSuburbHouse(walls, roofs, colliders, rand, cx, cz, w, d, faci
   const front = FRONT_FACE[facing];
   walls.box(cx, base, cz, sx, top - base, sz, color, (fi) => (fi === front ? [0, (base - max) / height, 1, 1] : null));
   const roof = new THREE.Color(ROOFS[Math.floor(rand() * ROOFS.length)]);
-  gableRoof(roofs, x0, x1, z0, z1, top, 1.6 + rand() * 1.2, alongX, roof);
-  colliders.push({ minX: x0, maxX: x1, minZ: z0, maxZ: z1 });
+  const rise = 1.6 + rand() * 1.2;
+  gableRoof(roofs, x0, x1, z0, z1, top, rise, alongX, roof);
+  colliders.push({ minX: x0, maxX: x1, minZ: z0, maxZ: z1, top, gable: { rise, alongX } });
 }
 
 // Detached houses with garden gaps around the perimeter of a rectangle, fronts facing out.

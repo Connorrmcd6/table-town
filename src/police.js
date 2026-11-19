@@ -1,6 +1,7 @@
 import { Car } from './vehicles/car.js';
 import { makeVehicle } from './vehicles/models.js';
 import { heightAt } from './world/heightmap.js';
+import { createOfficers } from './people/officers.js';
 
 const STAR_HEAT = [20, 80, 180, 320, 500];
 const MAX_HEAT = 700;
@@ -45,6 +46,7 @@ function lineClear(colliders, ax, az, bx, bz) {
 export function createPolice(scene, traffic) {
   const state = { heat: 0, stars: 0, seen: false, bust: 0 };
   const chasers = [];
+  const officers = createOfficers(scene);
   let spawnTimer = 0, pathTimer = 0, flash = 0;
   let distMap = new Map();
 
@@ -52,7 +54,16 @@ export function createPolice(scene, traffic) {
     state.heat = Math.min(MAX_HEAT, state.heat + amount);
   }
 
+  // Jump straight to at least this many stars.
+  function raiseTo(stars) {
+    // Land near the top of the band so the level sticks for a while once they lose sight of you.
+    const ceiling = stars < STAR_HEAT.length ? STAR_HEAT[stars] - 1 : MAX_HEAT;
+    state.heat = Math.max(state.heat, ceiling);
+    state.stars = starsFor(state.heat);
+  }
+
   function remove(c) {
+    c.alive = false;
     scene.remove(c.car.model.group);
     chasers.splice(chasers.indexOf(c), 1);
   }
@@ -61,6 +72,7 @@ export function createPolice(scene, traffic) {
     state.heat = 0;
     state.bust = 0;
     for (const c of [...chasers]) remove(c);
+    officers.clear();
   }
 
   function spawn(target, viewYaw) {
@@ -74,7 +86,7 @@ export function createPolice(scene, traffic) {
     const model = makeVehicle('police');
     scene.add(model.group);
     const car = new Car(model, n.x, n.z, Math.atan2(target.x - n.x, target.z - n.z));
-    chasers.push({ car, stuck: 0, reverse: 0, aim: { x: target.x, z: target.z } });
+    chasers.push({ car, stuck: 0, reverse: 0, aim: { x: target.x, z: target.z }, officers: [], alive: true });
   }
 
   function rebuildPaths(target) {
@@ -122,9 +134,10 @@ export function createPolice(scene, traffic) {
     const speed = car.speed;
     const turnAround = Math.abs(diff) >= 1.7 && speed > 6;
     const input = { throttle: !turnAround, brake: turnAround, steer: Math.max(-1, Math.min(1, diff * 2.5)), handbrake: Math.abs(diff) > 0.9 && speed > 14 };
-    if (onFoot && ((dist < 16 && speed > 2.5) || dist < 6)) {
+    // Roll up on a pedestrian and stop short rather than mowing them down.
+    if (onFoot && dist < 60 && (dist < 10 || speed > Math.max(2, (dist - 9) * 0.55))) {
       input.throttle = false;
-      input.brake = speed > 0.3;
+      input.brake = true;
     }
     if (input.throttle && Math.abs(speed) < 1) c.stuck += dt;
     else c.stuck = Math.max(0, c.stuck - dt);
@@ -148,7 +161,7 @@ export function createPolice(scene, traffic) {
     }
   }
 
-  function update(dt, { target, viewYaw, colliders, playerVehicle, onFoot, onRam }) {
+  function update(dt, { target, viewYaw, colliders, playerVehicle, onFoot, onRam, vehicles, onShoot }) {
     state.stars = starsFor(state.heat);
     const wanted = state.stars > 0;
     const desired = wanted ? Math.min(8, state.stars * 2) : 0;
@@ -174,19 +187,34 @@ export function createPolice(scene, traffic) {
       }
       if (d > 320) { remove(c); continue; }
       if (d < SEE_RANGE && lineClear(colliders, c.car.pos.x, c.car.pos.z, target.x, target.z)) state.seen = true;
-      aimFor(c, target, colliders);
-      drive(c, dt, target, colliders, onFoot);
+      c.slowT = Math.abs(c.car.speed) < 2.5 ? (c.slowT || 0) + dt : 0;
+      // Close and stopped, or stuck in a back street: get out and finish it on foot.
+      if (onFoot && !c.officers.length && ((d < 24 && c.slowT > 0) || (d < 70 && c.slowT > 2))) officers.deploy(c);
+      if (c.officers.some((o) => o.hp > 0)) {
+        c.car.update(dt, { throttle: false, brake: true, steer: 0, handbrake: true }, { colliders });
+      } else {
+        aimFor(c, target, colliders);
+        drive(c, dt, target, colliders, onFoot);
+      }
       if (playerVehicle) {
         const hit = collideCars(playerVehicle, c.car);
         if (hit > 3) onRam(hit);
       }
       for (const other of chasers) if (other !== c) collideCars(c.car, other.car);
     }
+    const grabbing = officers.update(dt, {
+      target, inVehicle: !onFoot, stars: state.stars, colliders, vehicles,
+      lineClear: (ax, az, bx, bz) => lineClear(colliders, ax, az, bx, bz),
+      onShoot,
+    });
+    for (const o of officers.list) {
+      if (o.state !== 'down' && Math.hypot(o.pos.x - target.x, o.pos.z - target.z) < SEE_RANGE && lineClear(colliders, o.pos.x, o.pos.z, target.x, target.z)) state.seen = true;
+    }
     if (wanted && !state.seen) state.heat = Math.max(STAR_HEAT[0] * 0.5, state.heat - dt * 9);
     if (wanted && !state.seen && state.heat <= STAR_HEAT[0] * 0.5 + 0.01) state.heat = 0;
 
     const slow = onFoot ? target.speed < 3 : target.speed < 1.5;
-    if (wanted && closest < (onFoot ? 5 : 7.5) && slow) state.bust += dt;
+    if (wanted && (onFoot ? grabbing > 0 : closest < 7.5 && slow)) state.bust += dt * (onFoot ? 0.8 + grabbing * 0.4 : 1);
     else state.bust = Math.max(0, state.bust - dt * 2);
     flashSirens(dt);
     return { closest: wanted ? closest : Infinity, busted: state.bust > 2.2 };
@@ -197,7 +225,7 @@ export function createPolice(scene, traffic) {
     return traffic.cars.some((c) => c.model.type === 'police' && Math.hypot(c.pos.x - x, c.pos.z - z) < r);
   }
 
-  return { state, chasers, addHeat, clear, update, nearCop };
+  return { state, chasers, officers, addHeat, raiseTo, clear, update, nearCop };
 }
 
 export function placeOnRoad(traffic, x, z) {

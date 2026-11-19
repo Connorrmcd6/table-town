@@ -131,6 +131,45 @@ export function crash(strength) {
   src.start(t);
 }
 
+export function gunshot(volume = 1) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer(0.3);
+  const f = ctx.createBiquadFilter();
+  f.type = 'bandpass';
+  f.frequency.value = 1400;
+  f.Q.value = 0.6;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.55 * volume, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+  src.connect(f).connect(g).connect(master);
+  src.start(t);
+  const o = ctx.createOscillator();
+  o.frequency.setValueAtTime(140, t);
+  o.frequency.exponentialRampToValueAtTime(40, t + 0.12);
+  const og = ctx.createGain();
+  og.gain.setValueAtTime(0.35 * volume, t);
+  og.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+  o.connect(og).connect(master);
+  o.start(t);
+  o.stop(t + 0.15);
+}
+
+export function punch() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const o = ctx.createOscillator();
+  o.frequency.setValueAtTime(110, t);
+  o.frequency.exponentialRampToValueAtTime(50, t + 0.08);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.4, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+  o.connect(g).connect(master);
+  o.start(t);
+  o.stop(t + 0.11);
+}
+
 export function jingle() {
   if (!ctx) return;
   const t = ctx.currentTime;

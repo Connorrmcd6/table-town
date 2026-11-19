@@ -80,13 +80,15 @@ export class ChaseCamera {
     } else {
       const dist = m.dist + Math.min(vel * 0.08, 4);
       const flat = dist * Math.cos(this.lookPitch * 0.8);
-      const target = new THREE.Vector3(car.pos.x - fx * flat, 0, car.pos.z - fz * flat);
+      // Over-the-shoulder offset to the right (used while aiming).
+      const sx = -fz * (m.side || 0), sz = fx * (m.side || 0);
+      const target = new THREE.Vector3(car.pos.x - fx * flat + sx, 0, car.pos.z - fz * flat + sz);
       target.y = Math.max(carY + m.height + Math.sin(this.lookPitch * 0.8) * dist, heightAt(target.x, target.z) + 1.5);
       if (snap) this.pos.copy(target);
       else this.pos.lerp(target, Math.min(1, dt * (this.idle < 0.3 ? 14 : 6)));
       this.camera.position.copy(this.pos);
       const ahead = 4 * Math.min(1, Math.max(0, this.idle - RECENTER_AFTER));
-      this.camera.lookAt(car.pos.x + fx * ahead, carY + m.look, car.pos.z + fz * ahead);
+      this.camera.lookAt(car.pos.x + fx * ahead + sx, carY + m.look, car.pos.z + fz * ahead + sz);
     }
     const fovTarget = 62 + Math.min(vel * 0.35, 14);
     this.camera.fov += (fovTarget - this.camera.fov) * Math.min(1, dt * 2);

@@ -10,7 +10,8 @@ A browser-based, PS2-era open-world caper set in a parody of Cape Town. Built wi
 
 ## Controls
 
-- `W A S D` / arrows - drive or run, `Space` - handbrake in a car, jump on foot
+- `W A S D` / arrows - drive or run, `Space` - handbrake in a car, jump on foot, or climb when facing a wall or car
+- Click - punch or shoot, right-click - aim, `Q` / mouse wheel - switch between fists and pistol
 - `F` - get in, jack a car, or bail out (works at speed, but it hurts)
 - `H` hooter, `G` gaartjie, `C` camera, `R` unstick car, `M` mute
 - Mouse - look around (click to capture, `Esc` to release)

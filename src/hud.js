@@ -7,6 +7,8 @@ export function createHud() {
   const radar = $('radar');
   const street = $('street');
   const healthFill = $('healthfill'), wanted = $('wanted'), promptEl = $('prompt'), big = $('bigtext');
+  const weaponEl = $('weapon'), crosshair = $('crosshair');
+  let lastWeapon = '';
   const stars = [...wanted.children];
   let lastStars = -1, lastPrompt = null;
   const rctx = radar.getContext('2d');
@@ -51,6 +53,14 @@ export function createHud() {
       lastStars = n;
     }
     wanted.classList.toggle('flash', n > 0 && !seen);
+  }
+
+  function weapon(text, aiming) {
+    if (text !== lastWeapon) {
+      weaponEl.textContent = text;
+      lastWeapon = text;
+    }
+    crosshair.classList.toggle('show', aiming);
   }
 
   function prompt(text) {
@@ -123,7 +133,7 @@ export function createHud() {
     rctx.stroke();
   }
 
-  return { update, notify, say, drawRadar, status, prompt, bigText };
+  return { update, notify, say, drawRadar, status, prompt, bigText, weapon };
 }
 
 const NAMED = () => ROADS.filter((r) => r.name);

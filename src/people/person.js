@@ -250,6 +250,61 @@ function crouch(p, amount, tuck) {
   p.hips.rotation.y = 0;
 }
 
+// Hauling up a wall: arms overhead pulling, legs scrambling, then a knee onto the ledge.
+export function poseClimb(p, k) {
+  const pull = Math.min(1, k / 0.7), over = Math.max(0, (k - 0.7) / 0.3);
+  const scramble = Math.sin(k * 22) * 0.5 * (1 - over);
+  p.body.rotation.x = 0;
+  p.body.position.set(0, 0, 0);
+  p.armL.rotation.set(-2.9 + pull * 1.2 + over * 1.4, 0, 0.15);
+  p.armR.rotation.set(-2.9 + pull * 1.2 + over * 1.4, 0, -0.15);
+  p.elbowL.rotation.x = -0.4 - pull * 0.8;
+  p.elbowR.rotation.x = -0.4 - pull * 0.8;
+  p.legL.rotation.set(-0.5 - scramble - over * 1.2, 0, 0);
+  p.legR.rotation.set(-0.5 + scramble, 0, 0);
+  p.kneeL.rotation.x = 0.9 + over * 1.0;
+  p.kneeR.rotation.x = 0.9;
+  p.torso.rotation.set(0.25 + over * 0.3, 0, 0);
+}
+
+// Upper-body overlays on top of the walk cycle: pistol aim (pitch down is positive) or a right jab.
+export function poseArms(p, arms) {
+  if (arms.mode === 'aim') {
+    p.armR.rotation.set(-Math.PI / 2 + arms.pitch, 0, 0.05);
+    p.elbowR.rotation.x = 0;
+    p.armL.rotation.set(-Math.PI / 2 + arms.pitch + 0.1, 0, -0.45);
+    p.elbowL.rotation.x = -0.3;
+    p.torso.rotation.set(0, 0, 0);
+  } else if (arms.mode === 'punch') {
+    const jab = Math.sin(Math.min(1, arms.k) * Math.PI);
+    p.armR.rotation.set(-0.6 - jab * 1.0, 0, -0.1);
+    p.elbowR.rotation.x = -1.6 + jab * 1.5;
+    p.armL.rotation.set(-1.2, 0, 0.2);
+    p.elbowL.rotation.x = -1.9;
+    p.torso.rotation.set(0.1, -0.35 + jab * 0.6, 0);
+  }
+}
+
+// A pistol held in the right hand, pointing down the forearm; returns the muzzle marker.
+export function addPistol(p) {
+  const gun = new THREE.Group();
+  const metal = new THREE.MeshLambertMaterial({ color: '#1c1c1e' });
+  const slide = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.22, 0.07), metal);
+  slide.position.set(0, -0.06, 0.03);
+  const grip = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.06, 0.12), metal);
+  grip.position.set(0, 0.02, -0.03);
+  gun.add(slide, grip);
+  gun.position.set(0, -0.3, 0.02);
+  const muzzle = new THREE.Object3D();
+  muzzle.position.set(0, -0.18, 0.03);
+  gun.add(muzzle);
+  p.elbowR.add(gun);
+  gun.visible = false;
+  p.gun = gun;
+  p.muzzle = muzzle;
+  return muzzle;
+}
+
 // Seated on a bike: thighs forward, knees bent, hands on the bars.
 export function poseRider(p, lean = 0.1) {
   p.legL.rotation.set(-1.45, 0, 0.12);

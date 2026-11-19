@@ -158,5 +158,22 @@ export function createPedestrians(scene, rects, count = 50) {
     return p;
   }
 
-  return { peds, update, eject, seedNear };
+  // Knock a pedestrian over from a punch or a bullet; `timer` is how long they stay down.
+  function knock(p, dir, strength, timer) {
+    p.state = 'down';
+    p.timer = timer;
+    p.knock.set(dir.x * strength, dir.y * strength);
+  }
+
+  // Everyone walking within r of (x, z) runs for it.
+  function scare(x, z, r) {
+    for (const p of peds) {
+      if (p.state !== 'walk' || Math.hypot(p.pos.x - x, p.pos.z - z) > r) continue;
+      p.state = 'flee';
+      p.timer = 4 + Math.random() * 2;
+      if (Math.random() < 0.5) p.dir = -p.dir;
+    }
+  }
+
+  return { peds, update, eject, seedNear, knock, scare };
 }

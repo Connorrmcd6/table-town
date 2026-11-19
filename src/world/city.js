@@ -241,7 +241,7 @@ function addHouse(builder, colliders, cx, cz, w, d, facing) {
   const pz = alongX ? cz + sign * (sz / 2 - 0.25) : cz;
   builder.box(px, top, pz, alongX ? w : 0.5, 0.9, alongX ? 0.5 : w, trim, null);
   if (rand() < 0.7) builder.box(px, top + 0.9, pz, alongX ? w * 0.4 : 0.5, 0.9, alongX ? 0.5 : w * 0.4, trim, null);
-  colliders.push({ minX: x0, maxX: x1, minZ: z0, maxZ: z1 });
+  colliders.push({ minX: x0, maxX: x1, minZ: z0, maxZ: z1, top });
 }
 
 function addBoKaapBlock(builder, colliders, r) {
@@ -275,7 +275,7 @@ function addOffice(builder, colliders, x0, x1, z0, z1, height) {
     const w = (x1 - x0) * 0.4, d = (z1 - z0) * 0.4;
     builder.box((x0 + x1) / 2, top, (z0 + z1) / 2, w, 3 + rand() * 4, d, color.clone().multiplyScalar(0.8), null, [0.01, 0.99]);
   }
-  colliders.push({ minX: x0, maxX: x1, minZ: z0, maxZ: z1 });
+  colliders.push({ minX: x0, maxX: x1, minZ: z0, maxZ: z1, top });
 }
 
 function addCbdBlock(builder, colliders, r) {

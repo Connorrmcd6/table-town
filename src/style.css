@@ -16,6 +16,13 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1410; }
 #wanted span.on { color: #f4c430; -webkit-text-stroke: 1.5px #000; }
 #wanted.flash span.on { animation: blink 0.5s steps(2) infinite; }
 @keyframes blink { 50% { opacity: 0.25; } }
+#weapon { margin-top: 4px; font-family: 'Anton', Impact, sans-serif; font-size: 22px; letter-spacing: 1px; text-shadow: 2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000; }
+#crosshair {
+  position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; display: none;
+  border: 2px solid rgba(255, 255, 255, 0.85); border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+#crosshair::after { content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; background: #fff; border-radius: 50%; }
+#crosshair.show { display: block; }
 #prompt { position: absolute; left: 50%; bottom: 170px; transform: translateX(-50%); font-size: 20px; background: rgba(0, 0, 0, 0.7); padding: 8px 14px; border-radius: 4px; display: none; }
 #prompt.show { display: block; }
 #bigtext {

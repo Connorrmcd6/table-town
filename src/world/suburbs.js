@@ -83,7 +83,7 @@ function addApartments(builder, colliders, rect) {
     builder.box((bx0 + bx1) / 2, base, (bz0 + bz1) / 2, bx1 - bx0, top - base, bz1 - bz0, color,
       (fi, fw, fh) => (fi === FACE.TOP || fi === FACE.BOTTOM ? null : [0, -ground, fw / bay, fh / bay - ground]),
       [0.01, 0.99]);
-    colliders.push({ minX: bx0, maxX: bx1, minZ: bz0, maxZ: bz1 });
+    colliders.push({ minX: bx0, maxX: bx1, minZ: bz0, maxZ: bz1, top });
   }
 }
 

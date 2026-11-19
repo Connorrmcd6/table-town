@@ -5,26 +5,7 @@ import { glowMaterial } from '../vehicles/traffic.js';
 
 const POLE_H = 7;
 
-function axisLines(roads) {
-  const vertical = [], horizontal = [];
-  for (const r of roads) {
-    for (let i = 0; i < r.points.length - 1; i++) {
-      const [ax, az] = r.points[i], [bx, bz] = r.points[i + 1];
-      if (Math.abs(ax - bx) < 0.01) vertical.push({ v: ax, a: Math.min(az, bz), b: Math.max(az, bz), half: r.width / 2 });
-      else if (Math.abs(az - bz) < 0.01) horizontal.push({ v: az, a: Math.min(ax, bx), b: Math.max(ax, bx), half: r.width / 2 });
-    }
-  }
-  return { vertical, horizontal };
-}
-
-function inJunction(x, z, lines) {
-  for (const l of lines.vertical) if (Math.abs(x - l.v) < l.half + 4 && z > l.a - 4 && z < l.b + 4) return true;
-  for (const l of lines.horizontal) if (Math.abs(z - l.v) < l.half + 4 && x > l.a - 4 && x < l.b + 4) return true;
-  return false;
-}
-
-export function createStreetlights(scene, colliders) {
-  const lines = axisLines(ROADS);
+export function createStreetlights(scene, colliders, roads) {
   const spots = [];
   for (const r of ROADS) {
     const spacing = r.width >= 12 ? 26 : 36;
@@ -33,13 +14,11 @@ export function createStreetlights(scene, colliders) {
       const [ax, az] = r.points[i], [bx, bz] = r.points[i + 1];
       const len = Math.hypot(bx - ax, bz - az);
       const dx = (bx - ax) / len, dz = (bz - az) / len;
-      const vertical = Math.abs(dx) < 0.01, horizontal = Math.abs(dz) < 0.01;
       for (let d = spacing / 2; d < len; d += spacing) {
         side = -side;
         const off = r.width / 2 + 0.9;
         const x = ax + dx * d + dz * off * side, z = az + dz * d - dx * off * side;
-        const others = { vertical: vertical ? [] : lines.vertical, horizontal: horizontal ? [] : lines.horizontal };
-        if (inJunction(x, z, others)) continue;
+        if (roads.clearance(x, z, new Set([r])) < 2.5) continue;
         spots.push({ x, z, toRoadX: -dz * side, toRoadZ: dx * side });
       }
     }

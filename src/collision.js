@@ -14,6 +14,11 @@ export class ColliderGrid {
     }
   }
 
+  contains(x, z) {
+    const list = this.cells.get(Math.floor(x / CELL) * 100003 + Math.floor(z / CELL));
+    return !!list && list.some((b) => x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ);
+  }
+
   // Pushes a circle out of any boxes; returns the summed push normal or null.
   resolveCircle(p, r) {
     let hit = null;

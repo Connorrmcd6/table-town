@@ -41,13 +41,17 @@ export class ChaseCamera {
     this.mode = (this.mode + 1) % MODES.length;
   }
 
+  get viewYaw() {
+    return (this.yaw ?? 0) + this.lookYaw;
+  }
+
   update(dt, car, snap = false) {
-    const m = MODES[this.mode];
+    const m = car.cameraProfile || MODES[this.mode];
     const vel = car.vel.length();
     if (this.yaw === null || snap) this.yaw = car.heading;
     let d = car.heading - this.yaw;
     d = Math.atan2(Math.sin(d), Math.cos(d));
-    this.yaw += d * Math.min(1, dt * (m.inside ? 20 : 3.5));
+    this.yaw += d * Math.min(1, dt * (m.inside ? 20 : car.cameraProfile ? 1.6 : 3.5));
 
     this.idle += dt;
     if (this.idle > RECENTER_AFTER && vel > 3) {

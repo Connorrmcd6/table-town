@@ -1,0 +1,95 @@
+import * as THREE from 'three';
+import { heightAt } from '../world/heightmap.js';
+import { makePerson, animatePerson, knockDown } from './person.js';
+import { vehicleCircles } from './pedestrians.js';
+
+const WALK = 2.2, RUN = 6;
+export const PLAYER_LOOK = { skin: '#7a5038', top: '#8a1c2b', bottom: '#1b1b1b', shoes: '#f4f4f0', hat: '#d9c38a', scale: 1 };
+
+// The player on foot: moves relative to the camera, turns to face where it walks.
+export class Walker {
+  constructor(scene) {
+    this.model = makePerson(PLAYER_LOOK);
+    this.model.type = 'person';
+    this.spec = { length: 0.6, width: 0.6, radius: 0.35 };
+    this.cameraProfile = { dist: 5.5, height: 2.4, look: 1.4 };
+    this.pos = new THREE.Vector3();
+    this.vel = new THREE.Vector2();
+    this.heading = 0;
+    this.down = 0;
+    this.active = false;
+    this.model.group.visible = false;
+    scene.add(this.model.group);
+  }
+
+  get speed() {
+    return this.vel.length();
+  }
+
+  place(x, z, heading) {
+    this.pos.set(x, heightAt(x, z), z);
+    this.heading = heading;
+    this.vel.set(0, 0);
+    this.down = 0;
+    this.sync(0);
+  }
+
+  setActive(on) {
+    this.active = on;
+    this.model.group.visible = on;
+  }
+
+  hit(dir, strength) {
+    this.down = 1.6;
+    this.vel.copy(dir).multiplyScalar(Math.min(strength, 9));
+  }
+
+  update(dt, input, viewYaw, { colliders, vehicles }) {
+    if (this.down > 0) {
+      this.down -= dt;
+      this.vel.multiplyScalar(Math.exp(-3 * dt));
+    } else {
+      const fwd = (input.throttle ? 1 : 0) - (input.brake ? 1 : 0);
+      const side = input.steer;
+      const fx = Math.sin(viewYaw), fz = Math.cos(viewYaw);
+      let mx = fx * fwd + fz * side, mz = fz * fwd - fx * side;
+      const len = Math.hypot(mx, mz);
+      const target = len > 0 ? (input.run ? RUN : WALK) : 0;
+      if (len > 0) {
+        mx /= len; mz /= len;
+        let d = Math.atan2(mx, mz) - this.heading;
+        d = Math.atan2(Math.sin(d), Math.cos(d));
+        this.heading += d * Math.min(1, dt * 12);
+      }
+      this.vel.lerp(new THREE.Vector2(mx * target, mz * target), Math.min(1, dt * 10));
+    }
+    this.pos.x += this.vel.x * dt;
+    this.pos.z += this.vel.y * dt;
+    colliders.resolveCircle(this.pos, this.spec.radius);
+    for (const v of vehicles) {
+      const dx = this.pos.x - v.pos.x, dz = this.pos.z - v.pos.z;
+      if (Math.abs(dx) > 5 || Math.abs(dz) > 5) continue;
+      for (const c of vehicleCircles(v)) {
+        const ex = this.pos.x - c.x, ez = this.pos.z - c.z;
+        const d = Math.hypot(ex, ez), min = c.r + this.spec.radius;
+        if (d < min && d > 1e-4) {
+          this.pos.x += (ex / d) * (min - d);
+          this.pos.z += (ez / d) * (min - d);
+        }
+      }
+    }
+    this.pos.y = heightAt(this.pos.x, this.pos.z);
+    this.sync(dt);
+  }
+
+  sync(dt) {
+    const g = this.model.group;
+    g.position.copy(this.pos);
+    g.rotation.y = this.heading;
+    if (this.down > 0) knockDown(this.model, Math.min(1, this.down * 2));
+    else {
+      knockDown(this.model, 0);
+      animatePerson(this.model, dt, this.speed);
+    }
+  }
+}

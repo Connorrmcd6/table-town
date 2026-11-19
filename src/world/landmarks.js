@@ -9,19 +9,6 @@ function rand() {
   return (seed - 1) / 2147483646;
 }
 
-function distToRoads(x, z) {
-  let best = Infinity;
-  for (const r of ROADS) {
-    for (let i = 0; i < r.points.length - 1; i++) {
-      const [ax, az] = r.points[i], [bx, bz] = r.points[i + 1];
-      const dx = bx - ax, dz = bz - az;
-      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz)));
-      best = Math.min(best, Math.hypot(x - ax - dx * t, z - az - dz * t) - r.width / 2);
-    }
-  }
-  return best;
-}
-
 function createWater(scene) {
   const geo = new THREE.PlaneGeometry(40000, 40000);
   geo.rotateX(-Math.PI / 2);
@@ -32,7 +19,7 @@ function createWater(scene) {
   scene.add(water);
 }
 
-function createPines(scene, colliders, isSuburb) {
+function createPines(scene, colliders, { isSuburb, roads, parks }) {
   const spots = [];
   for (let tries = 0; tries < 9000 && spots.length < 1400; tries++) {
     const x = toWorld(-1600 + rand() * 2800);
@@ -43,12 +30,14 @@ function createPines(scene, colliders, isSuburb) {
     if (h < 20 * S || h > 520 * S) continue;
     const slope = Math.abs(heightAt(x + 4, z) - h) + Math.abs(heightAt(x, z + 4) - h);
     if (slope > 3.2) continue;
-    if (distToRoads(x, z) < 6) continue;
+    if (roads.clearance(x, z) < 6) continue;
     spots.push([x, h, z, 0.7 + rand() * 0.7]);
   }
-  for (let i = 0; i < 40; i++) {
-    const x = 6 + rand() * 88, z = 30 + rand() * 80;
-    spots.push([x, heightAt(x, z), z, 0.9 + rand() * 0.5]);
+  for (const p of parks) {
+    for (let i = 0; i < 24; i++) {
+      const x = p.x0 + 4 + rand() * (p.x1 - p.x0 - 8), z = p.z0 + 4 + rand() * (p.z1 - p.z0 - 8);
+      if (roads.clearance(x, z) > 3) spots.push([x, heightAt(x, z), z, 0.7 + rand() * 0.4]);
+    }
   }
   const trunkGeo = new THREE.CylinderGeometry(0.35, 0.5, 8, 6);
   trunkGeo.translate(0, 4, 0);
@@ -70,13 +59,20 @@ function createPines(scene, colliders, isSuburb) {
   scene.add(trunks, canopies);
 }
 
-function createPalms(scene, colliders) {
+function createPalms(scene, colliders, roads) {
   const spots = [];
-  for (let x = toWorld(-650); x < toWorld(1200); x += 28) {
-    for (const side of [-12, 12]) {
-      const z = toWorld(-567) + side;
-      if (Math.abs(x) % toWorld(200) < 20) continue;
-      spots.push([x, heightAt(x, z), z]);
+  const blvd = ROADS.find((r) => r.name === 'Helen Suzman Blvd');
+  const skip = new Set([blvd]);
+  for (let i = 0; i < blvd.points.length - 1; i++) {
+    const [ax, az] = blvd.points[i], [bx, bz] = blvd.points[i + 1];
+    const len = Math.hypot(bx - ax, bz - az), dx = (bx - ax) / len, dz = (bz - az) / len;
+    for (let d = 14; d < len; d += 22) {
+      for (const side of [-1, 1]) {
+        const off = blvd.width / 2 + 3;
+        const x = ax + dx * d + dz * off * side, z = az + dz * d - dx * off * side;
+        if (roads.clearance(x, z, skip) < 3 || heightAt(x, z) < 0.5) continue;
+        spots.push([x, heightAt(x, z), z]);
+      }
     }
   }
   const trunkGeo = new THREE.CylinderGeometry(0.25, 0.4, 11, 5);
@@ -264,11 +260,11 @@ function createDisaPark(scene, colliders) {
   }
 }
 
-export function createLandmarks(scene, colliders, isSuburb = () => false) {
+export function createLandmarks(scene, colliders, { isSuburb, roads, parks }) {
   createWater(scene);
-  createPines(scene, colliders, isSuburb);
+  createPines(scene, colliders, { isSuburb, roads, parks });
   createDisaPark(scene, colliders);
-  createPalms(scene, colliders);
+  createPalms(scene, colliders, roads);
   createHarbour(scene);
   createMinaret(scene, colliders);
   createNoonGun(scene, colliders);

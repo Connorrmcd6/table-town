@@ -9,6 +9,21 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1410; }
 #clock { font-family: 'Anton', Impact, sans-serif; font-size: 34px; letter-spacing: 1px; text-shadow: 2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000; }
 #money { font-family: 'Anton', Impact, sans-serif; font-size: 38px; color: #3f9e3a; letter-spacing: 1px; text-shadow: 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000; }
 
+#health { width: 170px; height: 14px; margin: 6px 0 0 auto; border: 2px solid #000; background: #3a0d12; }
+#healthfill { height: 100%; width: 100%; background: #d9324a; transition: width 0.2s; }
+#wanted { margin-top: 4px; font-size: 30px; letter-spacing: 2px; }
+#wanted span { color: transparent; -webkit-text-stroke: 1.5px rgba(255, 255, 255, 0.35); }
+#wanted span.on { color: #f4c430; -webkit-text-stroke: 1.5px #000; }
+#wanted.flash span.on { animation: blink 0.5s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0.25; } }
+#prompt { position: absolute; left: 50%; bottom: 170px; transform: translateX(-50%); font-size: 20px; background: rgba(0, 0, 0, 0.7); padding: 8px 14px; border-radius: 4px; display: none; }
+#prompt.show { display: block; }
+#bigtext {
+  position: absolute; inset: 0; display: none; align-items: center; justify-content: center; font-family: 'Anton', Impact, sans-serif;
+  font-size: clamp(64px, 13vw, 150px); letter-spacing: 6px; text-shadow: 5px 5px 0 #000, -3px -3px 0 #000, 3px -3px 0 #000, -3px 3px 0 #000;
+  background: rgba(0, 0, 0, 0.25);
+}
+#bigtext.show { display: flex; }
 #radar { position: absolute; left: 26px; bottom: 26px; width: 180px; height: 180px; }
 #street { position: absolute; left: 216px; bottom: 66px; font-size: 20px; font-weight: 500; color: #f4d8a0; text-shadow: 2px 2px 0 #000; }
 #speed { position: absolute; left: 216px; bottom: 30px; font-size: 26px; font-weight: 700; text-shadow: 2px 2px 0 #000; }

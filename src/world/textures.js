@@ -32,6 +32,14 @@ export function asphaltTexture() {
   });
 }
 
+export function plainAsphaltTexture() {
+  return canvas(64, 64, (ctx, w, h) => {
+    ctx.fillStyle = '#4a4744';
+    ctx.fillRect(0, 0, w, h);
+    speckle(ctx, w, h, 700, ['#3e3b39', '#56524e', '#47433f', '#5c5853']);
+  });
+}
+
 export function cobbleTexture() {
   return canvas(128, 128, (ctx, w, h) => {
     ctx.fillStyle = '#5d554c';

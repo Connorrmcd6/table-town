@@ -5,12 +5,16 @@ import { createCity } from './world/city.js';
 import { createLandmarks } from './world/landmarks.js';
 import { createSuburbs } from './world/suburbs.js';
 import { createStreetlights } from './world/streetlights.js';
-import { districtAt, heightAt, w as toWorld } from './world/heightmap.js';
+import { districtAt, w as toWorld } from './world/heightmap.js';
 import { ColliderGrid } from './collision.js';
 import { playerTaxi } from './vehicles/models.js';
 import { Car } from './vehicles/car.js';
 import { createTraffic } from './vehicles/traffic.js';
-import { cityEdges } from './world/city.js';
+import { cityEdges, routeEdges, createJunctions, ROADS } from './world/city.js';
+import { buildRoadIndex } from './world/roadIndex.js';
+import { Walker } from './people/walker.js';
+import { createPedestrians, vehicleCircles } from './people/pedestrians.js';
+import { createPolice, collideCars, placeOnRoad } from './police.js';
 import { ChaseCamera, lockPointer } from './camera.js';
 import { readDriving, wasPressed, releaseAll, endFrame } from './input.js';
 import { createCheatPrompt } from './cheats.js';
@@ -18,8 +22,15 @@ import { createHud, streetAt } from './hud.js';
 import * as audio from './audio.js';
 
 const START = { x: toWorld(-180) + 2.8, z: toWorld(-230), heading: 0 };
+const HOSPITAL = { x: toWorld(1100), z: toWorld(300), name: 'Groote Skuur Hospital' };
+const STATION = { x: toWorld(400), z: toWorld(-330), name: 'Caledon Square' };
 const START_CLOCK = 16 * 60 + 30;
 const SUNDOWNER_STOPS = [6 * 60 + 15, 12 * 60, 17 * 60 + 30, 21 * 60];
+const MAX_PARKED = 4;
+const ENTER_RANGE = 2.2;
+const VEHICLE_NAMES = { taxi: 'taxi', golf: 'Citi Golf', bakkie: 'bakkie', police: 'SAPS bakkie' };
+const JACKED_LINES = ['Haai! Jou ma se...!', "Voetsek! That's my car!", 'Eish! Not again!', 'Hey bru! Bring it back!', 'Ag no man, I just washed it!'];
+const HIT_LINES = ['Eish!', 'Watch where you drive, bru!', 'Aikona!', 'Jirre!'];
 
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -46,18 +57,26 @@ function build() {
   scene.add(createTerrain());
   const city = createCity(scene);
   const suburbs = createSuburbs(scene, city.colliders);
-  const landmarks = createLandmarks(scene, city.colliders, suburbs.isSuburb);
-  const streetlights = createStreetlights(scene, city.colliders);
-  const traffic = createTraffic(scene, city.colliders, [...cityEdges(), ...suburbs.edges]);
+  const roads = buildRoadIndex(ROADS);
+  createJunctions(scene, roads);
+  const landmarks = createLandmarks(scene, city.colliders, { isSuburb: suburbs.isSuburb, roads, parks: city.blocks.filter((b) => b.park) });
+  const streetlights = createStreetlights(scene, city.colliders, roads);
+  const traffic = createTraffic(scene, city.colliders, [...cityEdges(), ...routeEdges(), ...suburbs.edges], 90, roads);
   const colliders = new ColliderGrid(city.colliders);
   const taxiModel = playerTaxi();
+  scene.add(taxiModel.group);
+  const vehicle = new Car(taxiModel, START.x, START.z, START.heading);
   const headlight = new THREE.SpotLight('#fff1d0', 0, 80, 0.55, 0.6, 1);
   headlight.position.set(0, 1.1, 2.5);
   headlight.target.position.set(0, 0, 22);
-  taxiModel.group.add(headlight, headlight.target);
-  scene.add(taxiModel.group);
-  const player = new Car(taxiModel, START.x, START.z, START.heading);
-  return { sky, city, suburbs, landmarks, streetlights, colliders, player, traffic, headlight };
+  const walker = new Walker(scene);
+  const walkRects = [
+    ...city.blocks.map((b) => ({ x0: b.x0 + 1.2, x1: b.x1 - 1.2, z0: b.z0 + 1.2, z1: b.z1 - 1.2, sidewalk: true })),
+    ...suburbs.walkRects,
+  ];
+  const peds = createPedestrians(scene, walkRects, 50);
+  const police = createPolice(scene, traffic);
+  return { sky, city, suburbs, landmarks, streetlights, colliders, vehicle, traffic, headlight, roads, walker, peds, police, parked: [] };
 }
 
 let world;
@@ -72,7 +91,19 @@ const state = {
   frozen: false,
   loadshedding: false,
   started: false,
+  onFoot: false,
+  health: 100,
+  overlay: null,
 };
+
+const controlled = () => (state.onFoot ? world.walker : world.vehicle);
+
+function attachHeadlight(car) {
+  const { headlight } = world;
+  headlight.parent?.remove(headlight);
+  headlight.target.parent?.remove(headlight.target);
+  if (car) car.model.group.add(headlight, headlight.target);
+}
 
 function applyLighting() {
   const { sky, city, suburbs } = world;
@@ -80,13 +111,13 @@ function applyLighting() {
   city.setWindowGlow(glow);
   suburbs.setWindowGlow(glow);
   world.streetlights.setLevel(state.loadshedding ? 0 : sky.state.lights);
-  world.headlight.intensity = sky.state.lights * 90;
+  world.headlight.intensity = state.onFoot ? 0 : sky.state.lights * 90;
 }
 
 function applyCheat(cheat) {
   audio.jingle();
   hud.notify(`Cheat activated: ${cheat.label}`);
-  const { sky, landmarks, traffic } = world;
+  const { sky, landmarks, traffic, police } = world;
   switch (cheat.code) {
     case 'LOADSHEDDING':
       state.loadshedding = !state.loadshedding;
@@ -119,6 +150,16 @@ function applyCheat(cheat) {
     case 'LEKKER':
       state.cash += 250000;
       break;
+    case 'BRIBE':
+      police.clear();
+      state.cash = Math.max(0, state.cash - 200);
+      break;
+    case 'VETKOEK':
+      state.health = 100;
+      break;
+    case 'TROUBLE':
+      police.addHeat(90);
+      break;
   }
   applyLighting();
 }
@@ -129,34 +170,201 @@ const cheatPrompt = createCheatPrompt({
   onToggle: releaseAll,
 });
 
-const wind = new THREE.Vector2();
-let streetTimer = 0, road = '';
-let windT = 0;
+function crime(heat, x, z, witnessRange = 60) {
+  world.police.addHeat(world.police.nearCop(x, z, witnessRange) ? heat * 2 : heat);
+}
 
-function respawn() {
-  const { player } = world;
-  player.pos.set(START.x, heightAt(START.x, START.z), START.z);
-  player.heading = START.heading;
-  player.vel.set(0, 0);
-  chase.update(0, player, true);
-  hud.notify('Back in Bo-Kaap, bru');
+function say(line) {
+  hud.say(`"${line}"`, 2.5);
+  audio.speak(line, 1.1);
+}
+
+// Everything you can climb into from the pavement, closest first.
+function nearestEnterable() {
+  const { walker, traffic, police, parked } = world;
+  const candidates = [
+    ...parked.map((car) => ({ kind: 'parked', car })),
+    ...traffic.cars.map((ai) => ({ kind: 'traffic', ai, car: ai })),
+    ...police.chasers.map((c) => ({ kind: 'cop', chaser: c, car: c.car })),
+  ];
+  let best = null, bestD = Infinity;
+  for (const c of candidates) {
+    for (const circle of vehicleCircles(c.car)) {
+      const d = Math.hypot(circle.x - walker.pos.x, circle.z - walker.pos.z) - circle.r;
+      if (d < bestD) { bestD = d; best = c; }
+    }
+  }
+  return bestD < ENTER_RANGE ? best : null;
+}
+
+function enterVehicle(target) {
+  const { traffic, police, parked, peds, walker } = world;
+  let car;
+  if (target.kind === 'traffic') {
+    const ai = target.ai;
+    traffic.removeCar(ai);
+    car = new Car(ai.model, ai.pos.x, ai.pos.z, ai.heading);
+    const lx = Math.cos(ai.heading), lz = -Math.sin(ai.heading);
+    peds.eject(ai.pos.x + lx * 2, ai.pos.z + lz * 2, ai.heading + Math.PI / 2);
+    say(JACKED_LINES[Math.floor(Math.random() * JACKED_LINES.length)]);
+    crime(ai.model.type === 'police' ? 80 : 12, walker.pos.x, walker.pos.z, 45);
+  } else if (target.kind === 'cop') {
+    police.chasers.splice(police.chasers.indexOf(target.chaser), 1);
+    car = target.car;
+    crime(80, walker.pos.x, walker.pos.z);
+  } else {
+    car = target.car;
+    parked.splice(parked.indexOf(car), 1);
+  }
+  world.vehicle = car;
+  state.onFoot = false;
+  walker.setActive(false);
+  attachHeadlight(car);
+  hud.notify(`You're in the ${VEHICLE_NAMES[car.model.type] || 'car'}`, 1.5);
+}
+
+function parkVehicle(car) {
+  const { parked } = world;
+  parked.push(car);
+  while (parked.length > MAX_PARKED) {
+    const old = parked.shift();
+    scene.remove(old.model.group);
+  }
+}
+
+function exitVehicle() {
+  const { vehicle, walker } = world;
+  if (Math.abs(vehicle.speed) > 7) return;
+  const lx = Math.cos(vehicle.heading), lz = -Math.sin(vehicle.heading);
+  const side = vehicle.spec.width / 2 + 0.7;
+  walker.place(vehicle.pos.x + lx * side, vehicle.pos.z + lz * side, vehicle.heading);
+  walker.setActive(true);
+  vehicle.steer = 0;
+  parkVehicle(vehicle);
+  world.vehicle = null;
+  state.onFoot = true;
+  attachHeadlight(null);
+}
+
+function respawnAt(spot, kind) {
+  const { police, walker } = world;
+  police.clear();
+  if (world.vehicle) {
+    parkVehicle(world.vehicle);
+    world.vehicle = null;
+  }
+  const p = placeOnRoad(world.traffic, spot.x, spot.z);
+  walker.place(p.x + 9, p.z + 9, p.heading);
+  walker.setActive(true);
+  state.onFoot = true;
+  state.health = 100;
+  attachHeadlight(null);
+  chase.update(0, walker, true);
+  world.peds.seedNear(walker.pos.x, walker.pos.z);
+  const fee = kind === 'wasted' ? 1000 : 500;
+  state.cash = Math.max(0, state.cash - fee);
+  hud.notify(`${spot.name}. That cost you R${fee}.`, 3.5);
+}
+
+function showOverlay(kind) {
+  if (state.overlay) return;
+  state.overlay = { kind, timer: 3.2 };
+  hud.bigText(kind === 'wasted' ? 'WASTED' : 'BUSTED', kind === 'wasted' ? '#c0392b' : '#4a7bd9');
+  audio.crash(20);
+}
+
+function unstick() {
+  const { vehicle, traffic } = world;
+  const p = placeOnRoad(traffic, vehicle.pos.x, vehicle.pos.z);
+  vehicle.pos.set(p.x, p.y, p.z);
+  vehicle.heading = p.heading;
+  vehicle.vel.set(0, 0);
+  chase.update(0, vehicle, true);
+  hud.notify('Back on the road, bru', 1.5);
+}
+
+const wind = new THREE.Vector2();
+let streetTimer = 0, road = '', windT = 0, ramCooldown = 0;
+const redRunCooldown = new Map();
+
+function damage(amount) {
+  state.health -= amount;
+  if (state.health <= 0) {
+    state.health = 0;
+    showOverlay('wasted');
+  }
+}
+
+function checkRedLights(car) {
+  const { traffic, police } = world;
+  if (Math.abs(car.speed) < 5) return;
+  const axis = Math.abs(Math.sin(car.heading)) > Math.abs(Math.cos(car.heading)) ? 'ew' : 'ns';
+  for (const n of traffic.nodes) {
+    if (!n.signal || Math.abs(n.x - car.pos.x) > 6 || Math.abs(n.z - car.pos.z) > 6) continue;
+    if ((redRunCooldown.get(n) || 0) > state.minutes) continue;
+    redRunCooldown.set(n, state.minutes + 1);
+    if (traffic.signal(n, axis) === 'red' && police.nearCop(car.pos.x, car.pos.z, 60)) {
+      police.addHeat(25);
+      hud.notify('Skipped a red robot in front of the cops', 2);
+    }
+  }
+}
+
+function hitByTraffic(walker, vehicles) {
+  if (walker.down > 0) return;
+  for (const v of vehicles) {
+    const s = Math.abs(v.speed);
+    if (s < 3 || Math.abs(v.pos.x - walker.pos.x) > 6 || Math.abs(v.pos.z - walker.pos.z) > 6) continue;
+    for (const c of vehicleCircles(v)) {
+      if (Math.hypot(c.x - walker.pos.x, c.z - walker.pos.z) < c.r + walker.spec.radius + 0.1) {
+        walker.hit(new THREE.Vector2(Math.sin(v.heading), Math.cos(v.heading)), s * 0.6);
+        damage(s * 3.5);
+        audio.crash(s);
+        return;
+      }
+    }
+  }
+}
+
+const camRay = new THREE.Vector3();
+function keepCameraOutOfWalls(focus, colliders) {
+  const from = camRay.set(focus.pos.x, focus.pos.y + 1.6, focus.pos.z);
+  const to = camera.position;
+  const len = from.distanceTo(to);
+  for (let d = 0.6; d < len; d += 0.4) {
+    const k = d / len;
+    const x = from.x + (to.x - from.x) * k, z = from.z + (to.z - from.z) * k;
+    if (colliders.contains(x, z)) {
+      const back = Math.max(0.3, d - 0.5) / len;
+      camera.position.lerpVectors(from, to, back);
+      return;
+    }
+  }
 }
 
 function tick(dt) {
-  const { player, traffic, sky, landmarks, colliders } = world;
-  const active = state.started && !cheatPrompt.open;
-  const input = active ? readDriving() : { throttle: false, brake: false, steer: 0, handbrake: false };
+  const { traffic, sky, landmarks, colliders, walker, peds, police, parked } = world;
+  const active = state.started && !cheatPrompt.open && !state.overlay;
+  const input = active ? readDriving() : { throttle: false, brake: false, steer: 0, handbrake: false, run: false };
 
   if (active) {
     if (wasPressed('Backquote') || wasPressed('Slash')) cheatPrompt.toggle();
-    if (wasPressed('KeyH')) audio.hoot();
-    if (wasPressed('KeyG')) {
-      const line = audio.gaartjie();
-      if (line) hud.say(`"${line}"`);
-    }
     if (wasPressed('KeyC')) chase.cycle();
     if (wasPressed('KeyM')) hud.notify(audio.toggleMute() ? 'Sound off' : 'Sound on', 1.5);
-    if (wasPressed('KeyR')) respawn();
+    if (state.onFoot) {
+      if (wasPressed('KeyF')) {
+        const target = nearestEnterable();
+        if (target) enterVehicle(target);
+      }
+    } else {
+      if (wasPressed('KeyH')) audio.hoot();
+      if (wasPressed('KeyG') && world.vehicle.model.type === 'taxi') {
+        const line = audio.gaartjie();
+        if (line) hud.say(`"${line}"`);
+      }
+      if (wasPressed('KeyR')) unstick();
+      if (wasPressed('KeyF')) exitVehicle();
+    }
   }
 
   const sdt = dt * state.timeScale;
@@ -166,24 +374,84 @@ function tick(dt) {
     wind.set(-0.7, -0.7).multiplyScalar(gust);
   } else wind.set(0, 0);
 
-  const onImpact = (s) => audio.crash(s);
-  player.update(sdt, input, { colliders, boost: state.boost, wind: state.windOn ? wind : null, onImpact });
-  traffic.update(sdt, player, onImpact, { signalsOff: state.loadshedding, lights: world.sky.state.lights });
+  const onImpact = (s) => {
+    audio.crash(s);
+    if (!state.onFoot && s > 11) damage((s - 11) * 1.4);
+  };
+  const vehicle = world.vehicle;
+  const env = { colliders, boost: state.boost, wind: state.windOn ? wind : null, onImpact };
+  if (vehicle) {
+    vehicle.update(sdt, input, env);
+    for (const p of parked) collideCars(vehicle, p);
+    checkRedLights(vehicle);
+  }
+  for (const p of parked) p.update(sdt, { throttle: false, brake: true, steer: 0, handbrake: true }, { colliders });
+
+  const cops = police.chasers.map((c) => c.car);
+  if (state.onFoot) {
+    walker.update(sdt, input, chase.viewYaw, { colliders, vehicles: [...traffic.cars, ...cops, ...parked] });
+    hitByTraffic(walker, [...traffic.cars, ...cops]);
+  }
+  traffic.update(sdt, vehicle, onImpact, { signalsOff: state.loadshedding, lights: sky.state.lights, walker: state.onFoot ? walker : null });
+
+  const me = controlled();
+  peds.update(sdt, me.pos, [...(vehicle ? [vehicle] : []), ...traffic.cars, ...cops], vehicle, (p, v, s) => {
+    if (v !== vehicle) return;
+    crime(28, p.pos.x, p.pos.z);
+    if (Math.random() < 0.5) say(HIT_LINES[Math.floor(Math.random() * HIT_LINES.length)]);
+    audio.crash(s * 0.6);
+  });
+
+  ramCooldown -= sdt;
+  const fx = Math.sin(me.heading), fz = Math.cos(me.heading);
+  const result = police.update(sdt, {
+    target: { x: me.pos.x, z: me.pos.z, vx: state.onFoot ? walker.vel.x : vehicle.vel.x, vz: state.onFoot ? walker.vel.y : vehicle.vel.y, speed: Math.abs(me.speed), fx, fz },
+    viewYaw: chase.viewYaw,
+    colliders,
+    playerVehicle: vehicle,
+    onFoot: state.onFoot,
+    onRam: (s) => {
+      onImpact(s);
+      if (ramCooldown <= 0) { police.addHeat(15); ramCooldown = 1; }
+    },
+  });
+  if (result.busted) showOverlay('busted');
+  audio.setSiren(result.closest < 150 ? 1 - result.closest / 150 : 0);
+
+  if (state.overlay) {
+    state.overlay.timer -= dt;
+    if (state.overlay.timer <= 0) {
+      const kind = state.overlay.kind;
+      state.overlay = null;
+      hud.bigText(null);
+      respawnAt(kind === 'wasted' ? HOSPITAL : STATION, kind);
+    }
+  }
+
   landmarks.update(sdt);
-  chase.update(dt, player);
+  chase.update(dt, controlled());
+  keepCameraOutOfWalls(controlled(), colliders);
   state.minutes += sdt;
   sky.setTime(state.minutes);
   applyLighting();
-  sky.follow(player.pos);
-  audio.updateEngine(player.speed, input.throttle);
-  const area = districtAt(player.pos.x, player.pos.z, player.pos.y);
+  const focus = controlled();
+  sky.follow(focus.pos);
+  audio.updateEngine(vehicle ? vehicle.speed : 0, input.throttle, !!vehicle);
+  const area = districtAt(focus.pos.x, focus.pos.z, focus.pos.y);
   streetTimer -= dt;
   if (streetTimer <= 0) {
     streetTimer = 0.25;
-    road = streetAt(player.pos.x, player.pos.z);
+    road = streetAt(focus.pos.x, focus.pos.z);
   }
-  hud.update(dt, { cash: state.cash, minutes: state.minutes, kmh: Math.abs(player.speed) * 3.6, area, road });
-  hud.drawRadar(player, traffic.cars);
+  hud.update(dt, { cash: state.cash, minutes: state.minutes, kmh: vehicle ? Math.abs(vehicle.speed) * 3.6 : null, area, road });
+  hud.status({ health: state.health, stars: police.state.stars, seen: police.state.seen });
+  let promptText = null;
+  if (state.onFoot && active) {
+    const t = nearestEnterable();
+    if (t) promptText = `F - ${t.kind === 'parked' ? 'get in' : 'jack'} the ${VEHICLE_NAMES[t.car.model.type] || 'car'}`;
+  }
+  hud.prompt(promptText);
+  hud.drawRadar(focus, traffic.cars, cops);
   endFrame();
 }
 
@@ -207,10 +475,12 @@ function start() {
 
 setTimeout(() => {
   world = build();
+  attachHeadlight(world.vehicle);
   world.sky.setTime(state.minutes);
-  world.sky.follow(world.player.pos);
+  world.sky.follow(world.vehicle.pos);
+  world.peds.seedNear(START.x, START.z);
   applyLighting();
-  chase.update(0, world.player, true);
+  chase.update(0, world.vehicle, true);
   startEl.textContent = 'Press Enter or click to start';
   window.addEventListener('keydown', (e) => { if (e.code === 'Enter') start(); });
   titleEl.addEventListener('click', start);

@@ -19,13 +19,13 @@ function buildGraph(edges) {
   const nodes = new Map();
   const node = ([x, z]) => {
     const k = keyOf(x, z);
-    if (!nodes.has(k)) nodes.set(k, { key: k, x, z, nbrs: [], signal: null });
+    if (!nodes.has(k)) nodes.set(k, { key: k, x, z, nbrs: [], signal: null, occupants: new Map() });
     return nodes.get(k);
   };
   const list = [];
   for (const e of edges) {
     const a = node(e.a), b = node(e.b);
-    if (a.nbrs.some((n) => n.node === b)) continue;
+    if (a === b || a.nbrs.some((n) => n.node === b)) continue;
     a.nbrs.push({ node: b, width: e.width });
     b.nbrs.push({ node: a, width: e.width });
     list.push({ a, b, width: e.width });
@@ -66,6 +66,28 @@ function lanePoint(from, to, dist, lane) {
 
 const edgeWidth = (a, b) => a.nbrs.find((n) => n.node === b)?.width ?? 8;
 
+function unit(ax, az, bx, bz) {
+  const l = Math.hypot(bx - ax, bz - az) || 1;
+  return [(bx - ax) / l, (bz - az) / l];
+}
+
+// How a car passes through a junction: which way it came in, and whether it goes straight or turns right (crossing oncoming).
+function movement(from, node, to) {
+  const [ix, iz] = unit(from.x, from.z, node.x, node.z);
+  const [ox, oz] = unit(node.x, node.z, to.x, to.z);
+  const straight = ix * ox + iz * oz > 0.7;
+  const left = ox * iz - oz * ix > 0;
+  return { from, ix, iz, crossesOncoming: !straight && !left };
+}
+
+function compatible(a, b) {
+  if (a.from === b.from) return true;
+  const opposite = a.ix * b.ix + a.iz * b.iz < -0.7;
+  return opposite && !a.crossesOncoming && !b.crossesOncoming;
+}
+
+const STALE_OCCUPANT = 12;
+
 class AICar {
   constructor(model, from, to) {
     this.model = model;
@@ -78,6 +100,7 @@ class AICar {
     this.speed = 0;
     this.cruise = 9 + rand() * 6;
     this.frozen = false;
+    this.waited = 0;
     const len = Math.hypot(to.x - from.x, to.z - from.z);
     const start = lanePoint(from, to, len * (0.2 + rand() * 0.5), laneFor(edgeWidth(from, to)));
     this.pos.set(start.x, heightAt(start.x, start.z), start.z);
@@ -98,6 +121,8 @@ class AICar {
     };
     arrive.stopAt = this.to;
     arrive.axis = axisOf(this.from, this.to);
+    if (this.to.nbrs.length >= 3) arrive.move = movement(this.from, this.to, next);
+    leave.exits = this.to;
     this.waypoints.push(arrive, mid, leave);
     this.from = this.to;
     this.to = next;
@@ -110,18 +135,42 @@ class AICar {
     return s === 'red' || (s === 'amber' && dist > 9);
   }
 
+  junctionBlocked(wp, dist, env) {
+    if (!wp.move || dist > 12 || this.waited > 6) return false;
+    for (const [car, entry] of wp.stopAt.occupants) {
+      if (car === this) continue;
+      if (env.time - entry.at > STALE_OCCUPANT) {
+        wp.stopAt.occupants.delete(car);
+        continue;
+      }
+      if (!compatible(wp.move, entry.move)) return true;
+    }
+    return false;
+  }
+
+  mustWait(wp, dist, env) {
+    return this.holdFor(wp, dist, env) || this.junctionBlocked(wp, dist, env);
+  }
+
+  passed(wp, env) {
+    if (wp.move) wp.stopAt.occupants.set(this, { move: wp.move, at: env.time });
+    if (wp.exits) wp.exits.occupants.delete(this);
+    if (wp.stopAt) this.waited = 0;
+  }
+
   update(dt, others, player, env) {
     if (this.frozen) return;
     let target = this.waypoints[0];
     let dist = Math.hypot(target.x - this.pos.x, target.z - this.pos.z);
-    let held = this.holdFor(target, dist, env);
+    let held = this.mustWait(target, dist, env);
     for (let guard = 0; dist < 2.5 && !held && guard < 4; guard++) {
-      this.waypoints.shift();
+      this.passed(this.waypoints.shift(), env);
       if (this.waypoints.length < 2) this.planNext();
       target = this.waypoints[0];
       dist = Math.hypot(target.x - this.pos.x, target.z - this.pos.z);
-      held = this.holdFor(target, dist, env);
+      held = this.mustWait(target, dist, env);
     }
+    if (held && this.speed < 0.5 && !this.holdFor(target, dist, env)) this.waited += dt;
     const dx = target.x - this.pos.x, dz = target.z - this.pos.z;
     let diff = Math.atan2(dx, dz) - this.heading;
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));
@@ -146,6 +195,7 @@ class AICar {
     if (o === this) return;
     const ox = o.pos.x - this.pos.x, oz = o.pos.z - this.pos.z;
     if (Math.abs(ox) > 16 || Math.abs(oz) > 16) return;
+    if (o.model?.type !== 'person' && Math.cos(o.heading - this.heading) < -0.5) return;
     const along = ox * fx + oz * fz;
     const side = Math.abs(ox * fz - oz * fx);
     if (along > 0 && along < 14 && side < 2.4) cap(Math.max(0, (along - 6) * 1.2));
@@ -186,7 +236,7 @@ export function glowMaterial(color) {
   });
 }
 
-function createRobots(scene, colliders, signalled) {
+function createRobots(scene, colliders, signalled, roads) {
   const heads = [];
   for (const n of signalled) {
     const cross = n.stopBack - 2.5;
@@ -196,6 +246,7 @@ function createRobots(scene, colliders, signalled) {
       dx /= len; dz /= len;
       const x = n.x - dx * (cross + 1.4) + dz * (width / 2 + 1.0);
       const z = n.z - dz * (cross + 1.4) - dx * (width / 2 + 1.0);
+      if (roads && roads.clearance(x, z) < 0.3) continue;
       heads.push({ node: n, axis: axisOf(from, n), x, z, rot: Math.atan2(-dx, -dz) });
       colliders.push({ minX: x - 0.2, maxX: x + 0.2, minZ: z - 0.2, maxZ: z + 0.2 });
     }
@@ -230,9 +281,9 @@ function createRobots(scene, colliders, signalled) {
   };
 }
 
-export function createTraffic(scene, colliders, edges, count = 80) {
+export function createTraffic(scene, colliders, edges, count = 80, roads = null) {
   const { nodes, list } = buildGraph(edges);
-  const updateRobots = createRobots(scene, colliders, addSignals(nodes));
+  const updateRobots = createRobots(scene, colliders, addSignals(nodes), roads);
   const cityEdges = list.filter((e) => e.width >= 10);
   const cars = [];
   const types = ['golf', 'golf', 'golf', 'taxi', 'taxi', 'bakkie', 'bakkie', 'police', 'golf', 'taxi'];
@@ -285,19 +336,38 @@ export function createTraffic(scene, colliders, edges, count = 80) {
   }
 
   let time = 0;
+  const nodeList = [...nodes.values()].filter((n) => n.nbrs.length > 0);
   return {
     cars,
+    nodes: nodeList,
+    signal(node, axis) {
+      return node.signal ? signalAt(node, axis, time) : 'green';
+    },
+    nearestNode(x, z) {
+      let best = nodeList[0], bd = Infinity;
+      for (const n of nodeList) {
+        const d = (n.x - x) ** 2 + (n.z - z) ** 2;
+        if (d < bd) { bd = d; best = n; }
+      }
+      return best;
+    },
+    removeCar(car) {
+      const i = cars.indexOf(car);
+      if (i >= 0) cars.splice(i, 1);
+      for (const n of nodeList) n.occupants.delete(car);
+      pools.count = cars.length;
+    },
     get time() {
       return time;
     },
     setFrozen(v) {
       for (const c of cars) c.frozen = v;
     },
-    update(dt, player, onImpact, { signalsOff = false, lights = 0 } = {}) {
+    update(dt, player, onImpact, { signalsOff = false, lights = 0, walker = null } = {}) {
       time += dt;
       const env = { time, signalsOff };
-      for (const c of cars) c.update(dt, cars, player, env);
-      collidePlayer(player, onImpact);
+      for (const c of cars) c.update(dt, cars, player || walker, env);
+      if (player) collidePlayer(player, onImpact);
       updateRobots(time, signalsOff);
       pools.material.opacity = lights * 0.75;
       pools.visible = lights > 0.01;

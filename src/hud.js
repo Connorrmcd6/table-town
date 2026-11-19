@@ -6,6 +6,9 @@ export function createHud() {
   const money = $('money'), clock = $('clock'), speedo = $('speed'), district = $('district'), notice = $('notice'), subtitle = $('subtitle');
   const radar = $('radar');
   const street = $('street');
+  const healthFill = $('healthfill'), wanted = $('wanted'), promptEl = $('prompt'), big = $('bigtext');
+  const stars = [...wanted.children];
+  let lastStars = -1, lastPrompt = null;
   const rctx = radar.getContext('2d');
   let districtTimer = 0, noticeTimer = 0, subtitleTimer = 0, lastDistrict = '';
 
@@ -14,7 +17,7 @@ export function createHud() {
     money.textContent = `R${String(Math.floor(cash)).padStart(8, '0')}`;
     const h = Math.floor(minutes / 60) % 24, m = Math.floor(minutes % 60);
     clock.textContent = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    speedo.textContent = `${Math.round(kmh)} km/h`;
+    speedo.textContent = kmh === null ? '' : `${Math.round(kmh)} km/h`;
     if (area !== lastDistrict) {
       lastDistrict = area;
       district.textContent = area;
@@ -41,7 +44,29 @@ export function createHud() {
     subtitleTimer = seconds;
   }
 
-  function drawRadar(player, cars) {
+  function status({ health, stars: n, seen }) {
+    healthFill.style.width = `${Math.max(0, health)}%`;
+    if (n !== lastStars) {
+      stars.forEach((s, i) => s.classList.toggle('on', i < n));
+      lastStars = n;
+    }
+    wanted.classList.toggle('flash', n > 0 && !seen);
+  }
+
+  function prompt(text) {
+    if (text === lastPrompt) return;
+    lastPrompt = text;
+    promptEl.textContent = text || '';
+    promptEl.classList.toggle('show', !!text);
+  }
+
+  function bigText(text, color) {
+    big.textContent = text || '';
+    big.style.color = color || '#fff';
+    big.classList.toggle('show', !!text);
+  }
+
+  function drawRadar(player, cars, cops = []) {
     const W = radar.width, R = W / 2, scale = 0.6;
     rctx.save();
     rctx.clearRect(0, 0, W, W);
@@ -74,6 +99,11 @@ export function createHud() {
       rctx.fillStyle = c.model.type === 'police' ? '#3060ff' : '#e0c050';
       rctx.fillRect(c.pos.x - 3, c.pos.z - 3, 6, 6);
     }
+    const blink = Math.floor(performance.now() / 250) % 2;
+    for (const c of cops) {
+      rctx.fillStyle = blink ? '#ff3030' : '#3060ff';
+      rctx.fillRect(c.pos.x - 5, c.pos.z - 5, 10, 10);
+    }
     rctx.restore();
     rctx.fillStyle = '#fff';
     rctx.beginPath();
@@ -93,7 +123,7 @@ export function createHud() {
     rctx.stroke();
   }
 
-  return { update, notify, say, drawRadar };
+  return { update, notify, say, drawRadar, status, prompt, bigText };
 }
 
 const NAMED = () => ROADS.filter((r) => r.name);

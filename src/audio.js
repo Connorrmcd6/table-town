@@ -44,8 +44,12 @@ export function initAudio() {
   wind.start();
 }
 
-export function updateEngine(speed, throttle) {
+export function updateEngine(speed, throttle, running = true) {
   if (!ctx) return;
+  if (!running) {
+    engineGain.gain.setTargetAtTime(0, ctx.currentTime, 0.1);
+    return;
+  }
   const kmh = Math.abs(speed) * 3.6;
   const gear = Math.min(4, Math.floor(kmh / 32));
   const rpm = 0.25 + ((kmh - gear * 32) / 32) * 0.75;
@@ -55,6 +59,37 @@ export function updateEngine(speed, throttle) {
   engineSub.frequency.setTargetAtTime(f / 2, t, 0.05);
   engineFilter.frequency.setTargetAtTime(throttle ? 900 : 450, t, 0.1);
   engineGain.gain.setTargetAtTime(throttle ? 0.1 : 0.06, t, 0.1);
+}
+
+let siren = null;
+export function setSiren(level) {
+  if (!ctx) return;
+  if (!siren) {
+    const o = ctx.createOscillator();
+    o.type = 'triangle';
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 0.9;
+    const depth = ctx.createGain();
+    depth.gain.value = 260;
+    lfo.connect(depth).connect(o.frequency);
+    o.frequency.value = 760;
+    const g = ctx.createGain();
+    g.gain.value = 0;
+    o.connect(g).connect(master);
+    o.start();
+    lfo.start();
+    siren = g;
+  }
+  siren.gain.setTargetAtTime(level * 0.06, ctx.currentTime, 0.2);
+}
+
+export function speak(line, pitch = 1) {
+  if (!('speechSynthesis' in window) || muted) return;
+  const u = new SpeechSynthesisUtterance(line);
+  u.rate = 1.25;
+  u.pitch = pitch;
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
 }
 
 export function setWind(level) {

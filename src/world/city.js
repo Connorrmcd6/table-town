@@ -5,7 +5,7 @@ import { addSuburbHouse, fillPerimeter } from './houses.js';
 
 const inset = (r, d) => ({ x0: r.x0 + d, x1: r.x1 - d, z0: r.z0 + d, z1: r.z1 - d });
 import {
-  asphaltTexture, cobbleTexture, sidewalkTexture, officeTextures, houseFacadeTexture,
+  asphaltTexture, cobbleTexture, sidewalkTexture, officeTextures, houseFacadeTexture, plainAsphaltTexture,
 } from './textures.js';
 
 export const GRID_X = [-460, -390, -320, -250, -180, -100, 0, 100, 200, 300, 400, 500].map(toWorld);
@@ -32,8 +32,8 @@ function roadWidthAtX(x) {
 
 export const ROADS = [];
 
-function addRoad(points, width, surface, lift, name) {
-  ROADS.push({ points, width, surface, lift, name });
+function addRoad(points, width, surface, lift, name, route = false) {
+  ROADS.push({ points, width, surface, lift, name, route });
 }
 
 const scaleKeys = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [toWorld(Number(k)), v]));
@@ -70,14 +70,14 @@ for (const z of GRID_Z) {
   } else addRoad([[GRID_X[0], z], [BOKAAP_EDGE, z]], BOKAAP_ROAD_W, 'asphalt', 0.17, n);
   addRoad([[BOKAAP_EDGE, z], [GRID_X[GRID_X.length - 1], z]], CBD_ROAD_W, 'asphalt', 0.17, n);
 }
-addRoad(scalePts([[-700, -560], [-300, -575], [200, -560], [700, -575], [1250, -560]]), 18, 'asphalt', 0.2, 'Helen Suzman Blvd');
-addRoad(scalePts([[200, 220], [130, 400], [20, 580], [-150, 740], [-350, 860]]), 12, 'asphalt', 0.22, 'Kloof Street');
-addRoad(scalePts([[-350, 860], [-500, 940], [-650, 1000]]), 10, 'asphalt', 0.22, 'Kloof Nek Road');
-addRoad(scalePts([[-650, 1000], [-400, 1250], [-100, 1550], [150, 1800], [300, 1950]]), 9, 'asphalt', 0.22, 'Tafelberg Road');
-addRoad(scalePts([[-650, 1000], [-850, 1180], [-1100, 1380], [-1400, 1520], [-1720, 1420]]), 10, 'asphalt', 0.22, 'Kloof Road');
+addRoad(scalePts([[-700, -560], [-300, -575], [200, -560], [700, -575], [1250, -560]]), 18, 'asphalt', 0.32, 'Helen Suzman Blvd', true);
+addRoad(scalePts([[200, 220], [130, 400], [20, 580], [-150, 740], [-350, 860]]), 12, 'asphalt', 0.32, 'Kloof Street', true);
+addRoad(scalePts([[-350, 860], [-500, 940], [-650, 1000]]), 10, 'asphalt', 0.32, 'Kloof Nek Road', true);
+addRoad(scalePts([[-650, 1000], [-400, 1250], [-100, 1550], [150, 1800], [300, 1950]]), 9, 'asphalt', 0.32, 'Tafelberg Road', true);
+addRoad(scalePts([[-650, 1000], [-850, 1180], [-1100, 1380], [-1400, 1520], [-1720, 1420]]), 10, 'asphalt', 0.32, 'Kloof Road', true);
 addRoad(
   scalePts([[-650, 1000], [-900, 820], [-1150, 700], [-1300, 450], [-1300, 200], [-1220, 0], [-1150, -150]]),
-  9, 'asphalt', 0.22, 'Signal Hill Road'
+  9, 'asphalt', 0.32, 'Signal Hill Road', true
 );
 
 export const CBD_EDGE = BOKAAP_EDGE;
@@ -92,6 +92,28 @@ export function cityEdges() {
       const width = GRID_X[i] < BOKAAP_EDGE ? BOKAAP_ROAD_W : CBD_ROAD_W;
       edges.push({ a: [GRID_X[i], z], b: [GRID_X[i + 1], z], width });
     }
+  }
+  return edges;
+}
+
+const FORESHORE_LINKS = [0, 200, 400].map(toWorld);
+
+// Main roads as traffic edges; the Foreshore gets nodes where the CBD streets run down to meet it.
+export function routeEdges() {
+  const edges = [];
+  for (const r of ROADS.filter((road) => road.route)) {
+    let pts = r.points;
+    if (r.name === 'Helen Suzman Blvd') {
+      pts = [...pts];
+      for (const x of FORESHORE_LINKS) {
+        const i = pts.findIndex((p, k) => k > 0 && p[0] >= x);
+        const [ax, az] = pts[i - 1], [bx, bz] = pts[i];
+        const z = Math.abs(bx - x) < 0.01 ? bz : az + ((bz - az) * (x - ax)) / (bx - ax);
+        if (Math.abs(bx - x) >= 0.01) pts.splice(i, 0, [x, z]);
+        edges.push({ a: [x, GRID_Z[0]], b: [x, z], width: CBD_ROAD_W });
+      }
+    }
+    for (let i = 0; i < pts.length - 1; i++) edges.push({ a: pts[i], b: pts[i + 1], width: r.width });
   }
   return edges;
 }
@@ -327,4 +349,28 @@ export function createCity(scene) {
       mats.offices.emissiveIntensity = v;
     },
   };
+}
+
+// Plain asphalt squares over every crossing so lane markings don't run through junctions.
+export function createJunctions(scene, roadIndex) {
+  const b = new MeshBuilder();
+  const white = new THREE.Color(1, 1, 1);
+  for (const j of roadIndex.junctions()) {
+    if (j.roads.every((r) => r.surface === 'cobble')) continue;
+    const lift = Math.max(...j.roads.map((r) => r.lift)) + 0.04;
+    const half = j.size * 0.55 + 0.5;
+    const n = 3;
+    const P = (x, z) => [x, heightAt(x, z) + lift, z];
+    for (let i = 0; i < n; i++) {
+      for (let k = 0; k < n; k++) {
+        const xa = j.x - half + (2 * half * i) / n, xb = j.x - half + (2 * half * (i + 1)) / n;
+        const za = j.z - half + (2 * half * k) / n, zb = j.z - half + (2 * half * (k + 1)) / n;
+        b.quad([P(xa, zb), P(xb, zb), P(xb, za), P(xa, za)], [0, 1, 0],
+          [[xa / 6, zb / 6], [xb / 6, zb / 6], [xb / 6, za / 6], [xa / 6, za / 6]], white);
+      }
+    }
+  }
+  const mesh = new THREE.Mesh(b.build(), new THREE.MeshLambertMaterial({ map: plainAsphaltTexture() }));
+  mesh.receiveShadow = true;
+  scene.add(mesh);
 }

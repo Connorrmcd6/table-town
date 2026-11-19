@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { heightAt, coastDistance, DISA_PARK, w as toWorld, WORLD_SCALE as S } from './heightmap.js';
 import { MeshBuilder, FACE } from './geometry.js';
 import { ROADS, buildRoads, GRID_X, GRID_Z } from './city.js';
+import { buildRoadIndex } from './roadIndex.js';
 import { addSuburbHouse, fillPerimeter, footprintHeights } from './houses.js';
 import { asphaltTexture, officeTextures, houseFacadeTexture } from './textures.js';
 
@@ -121,11 +122,18 @@ export function createSuburbs(scene, colliders) {
     buildRoads(asphalt, road);
     ROADS.push(road);
   }
+  const roadIndex = buildRoadIndex(ROADS);
+  const footprintClear = (hx, hz, w, d, facing) => {
+    const alongX = facing === '+z' || facing === '-z';
+    const hw = (alongX ? w : d) / 2, hd = (alongX ? d : w) / 2;
+    return [[0, 0], [-hw, -hd], [hw, -hd], [-hw, hd], [hw, hd]].every(([ox, oz]) => roadIndex.clearance(hx + ox, hz + oz) > 0.5);
+  };
 
   const walls = new MeshBuilder();
   const roofs = new MeshBuilder();
   const flats = new MeshBuilder();
   const trees = [];
+  const walkRects = [];
   for (const [x0, x1, z0, z1] of cells) {
     const pad = (cityLine) => (cityLine ? 9 : ROAD_W / 2 + 2);
     const inner = {
@@ -133,6 +141,7 @@ export function createSuburbs(scene, colliders) {
       z0: z0 + pad(GRID_Z.includes(z0)), z1: z1 - pad(GRID_Z.includes(z1)),
     };
     const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    walkRects.push({ x0: inner.x0 - 1.2, x1: inner.x1 + 1.2, z0: inner.z0 - 1.2, z1: inner.z1 + 1.2 });
     const h = heightAt(cx, cz);
     const seaPoint = cx < toWorld(-1300);
     const apartments = h < 80 * S && rand() < (seaPoint ? 0.6 : 0.12);
@@ -141,12 +150,13 @@ export function createSuburbs(scene, colliders) {
       continue;
     }
     fillPerimeter(inner, rand, (hx, hz, w, d, facing) => {
-      if (distToSegments(hx, hz, specialRoads) < 10) return;
+      if (distToSegments(hx, hz, specialRoads) < 10 || !footprintClear(hx, hz, w, d, facing)) return;
       addSuburbHouse(walls, roofs, colliders, rand, hx, hz, w, d, facing);
     });
     for (let k = 0; k < 2; k++) {
-      const tx = cx + (rand() - 0.5) * 40, tz = cz + (rand() - 0.5) * 40;
-      if (distToSegments(tx, tz, specialRoads) > 8) trees.push([tx, heightAt(tx, tz), tz, 0.6 + rand() * 0.5]);
+      const tx = inner.x0 + 12 + rand() * Math.max(0, inner.x1 - inner.x0 - 24);
+      const tz = inner.z0 + 12 + rand() * Math.max(0, inner.z1 - inner.z0 - 24);
+      if (roadIndex.clearance(tx, tz) > 4) trees.push([tx, heightAt(tx, tz), tz, 0.6 + rand() * 0.5]);
     }
   }
 
@@ -184,6 +194,7 @@ export function createSuburbs(scene, colliders) {
   scene.add(trunks, canopies);
 
   return {
+    walkRects,
     edges: [...edges.values()].map((r) => ({ a: r.points[0], b: r.points[1], width: r.width })),
     isSuburb(x, z) {
       return valid.has(`${lineIndex(XS, x)},${lineIndex(ZS, z)}`);

@@ -6,6 +6,9 @@ export const CHEATS = [
   { code: 'SIXTYMINUTES', label: 'Turbo taxi' },
   { code: 'SUNDOWNER', label: 'Time skip' },
   { code: 'LEKKER', label: 'R250 000 in the cubbyhole' },
+  { code: 'BRIBE', label: 'Cooldrink for the officer. Wanted level cleared' },
+  { code: 'VETKOEK', label: 'Full health' },
+  { code: 'TROUBLE', label: 'The cops want a word' },
 ];
 
 export function findCheat(text) {

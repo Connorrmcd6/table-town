@@ -117,6 +117,17 @@ function wheels(group, width, radius, axles, tyreW = 0.26, rim = '#b9b9b9') {
   return out;
 }
 
+function addSiren(model) {
+  const geo = new THREE.BoxGeometry(0.5, 0.12, 0.26);
+  model.siren = [[-0.3, '#3a0505'], [0.3, '#0a0f3a']].map(([x, color]) => {
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color }));
+    m.position.set(x, 1.94, 0.15);
+    model.group.add(m);
+    return m;
+  });
+  return model;
+}
+
 // Merge every body part sharing a material so each car is a handful of draw calls.
 function optimize(model) {
   const g = model.group;
@@ -294,8 +305,6 @@ function bakkie(rnd, color, police = false) {
     box(g, W + 0.03, 0.12, 4.6, 0, 0.98, 0, '#1d3f9a');
     box(g, W + 0.03, 0.06, 4.6, 0, 0.88, 0, '#f2c230');
     box(g, 1.2, 0.12, 0.28, 0, 1.86, 0.15, '#222');
-    box(g, 0.5, 0.12, 0.26, -0.3, 1.94, 0.15, '#1e4bff', '#1030ff');
-    box(g, 0.5, 0.12, 0.26, 0.3, 1.94, 0.15, '#ff2020', '#ff0000');
   } else {
     for (const side of [-1, 1]) {
       const wall = addMesh(g, new THREE.BoxGeometry(0.07, 0.34, 2.12), mat('paint', color));
@@ -324,7 +333,7 @@ export function makeVehicle(type, rnd = Math.random) {
   if (type === 'taxi') return optimize({ type, ...minibus(rnd, p(TAXI_LIVERIES)) });
   if (type === 'golf') return optimize({ type, ...hatch(rnd, p(GOLF_COLOURS)) });
   if (type === 'bakkie') return optimize({ type, ...bakkie(rnd, p(BAKKIE_COLOURS)) });
-  if (type === 'police') return optimize({ type, ...bakkie(rnd, '#f4f4f0', true) });
+  if (type === 'police') return addSiren(optimize({ type, ...bakkie(rnd, '#f4f4f0', true) }));
   throw new Error(`unknown vehicle ${type}`);
 }
 

@@ -20,6 +20,7 @@ export function readDriving() {
     brake: keys.has('KeyS') || keys.has('ArrowDown'),
     steer: (left ? 1 : 0) - (right ? 1 : 0),
     handbrake: keys.has('Space'),
+    run: keys.has('ShiftLeft') || keys.has('ShiftRight'),
   };
 }
 

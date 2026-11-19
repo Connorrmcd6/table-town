@@ -32,9 +32,18 @@ function roadWidthAtX(x) {
 
 export const ROADS = [];
 
-function addRoad(points, width, surface, lift) {
-  ROADS.push({ points, width, surface, lift });
+function addRoad(points, width, surface, lift, name) {
+  ROADS.push({ points, width, surface, lift, name });
 }
+
+const STREET_X = {
+  [-250]: 'Chiappini St', [-180]: 'Rose St', [-100]: 'Buitengracht St', 0: 'Bree St', 100: 'Loop St',
+  200: 'Long St', 300: 'Burg St', 400: 'Adderley St', 500: 'Plein St',
+};
+const STREET_Z = {
+  [-480]: 'Strand St', [-380]: 'Waterkant St', [-280]: 'Shortmarket St', [-180]: 'Longmarket St',
+  [-80]: 'Wale St', 20: 'Dorp St', 120: 'Hope St', 220: 'Orange St',
+};
 
 export const BOKAAP = { minX: -320, maxX: -100, minZ: -380, maxZ: 20 };
 const inBoKaap = (x, z) => x >= BOKAAP.minX && x <= BOKAAP.maxX && z >= BOKAAP.minZ && z <= BOKAAP.maxZ;
@@ -43,27 +52,29 @@ for (const x of GRID_X) {
   const zMin = [0, 200, 400].includes(x) ? -560 : GRID_Z[0];
   const zMax = GRID_Z[GRID_Z.length - 1];
   const w = roadWidthAtX(x);
+  const n = STREET_X[x];
   if (x >= BOKAAP.minX && x < BOKAAP.maxX) {
-    addRoad([[x, zMin], [x, BOKAAP.minZ]], w, 'asphalt', 0.15);
-    addRoad([[x, BOKAAP.minZ], [x, BOKAAP.maxZ]], w, 'cobble', 0.15);
-    addRoad([[x, BOKAAP.maxZ], [x, zMax]], w, 'asphalt', 0.15);
-  } else addRoad([[x, zMin], [x, zMax]], w, 'asphalt', 0.15);
+    addRoad([[x, zMin], [x, BOKAAP.minZ]], w, 'asphalt', 0.15, n);
+    addRoad([[x, BOKAAP.minZ], [x, BOKAAP.maxZ]], w, 'cobble', 0.15, n);
+    addRoad([[x, BOKAAP.maxZ], [x, zMax]], w, 'asphalt', 0.15, n);
+  } else addRoad([[x, zMin], [x, zMax]], w, 'asphalt', 0.15, n);
 }
 for (const z of GRID_Z) {
+  const n = STREET_Z[z];
   if (z >= BOKAAP.minZ && z <= BOKAAP.maxZ) {
-    addRoad([[GRID_X[0], z], [BOKAAP.minX, z]], BOKAAP_ROAD_W, 'asphalt', 0.17);
-    addRoad([[BOKAAP.minX, z], [BOKAAP_EDGE, z]], BOKAAP_ROAD_W, 'cobble', 0.17);
-  } else addRoad([[GRID_X[0], z], [BOKAAP_EDGE, z]], BOKAAP_ROAD_W, 'asphalt', 0.17);
-  addRoad([[BOKAAP_EDGE, z], [GRID_X[GRID_X.length - 1], z]], CBD_ROAD_W, 'asphalt', 0.17);
+    addRoad([[GRID_X[0], z], [BOKAAP.minX, z]], BOKAAP_ROAD_W, 'asphalt', 0.17, n);
+    addRoad([[BOKAAP.minX, z], [BOKAAP_EDGE, z]], BOKAAP_ROAD_W, 'cobble', 0.17, n);
+  } else addRoad([[GRID_X[0], z], [BOKAAP_EDGE, z]], BOKAAP_ROAD_W, 'asphalt', 0.17, n);
+  addRoad([[BOKAAP_EDGE, z], [GRID_X[GRID_X.length - 1], z]], CBD_ROAD_W, 'asphalt', 0.17, n);
 }
-addRoad([[-700, -560], [-300, -575], [200, -560], [700, -575], [1250, -560]], 18, 'asphalt', 0.2);
+addRoad([[-700, -560], [-300, -575], [200, -560], [700, -575], [1250, -560]], 18, 'asphalt', 0.2, 'Helen Suzman Blvd');
+addRoad([[200, 220], [130, 400], [20, 580], [-150, 740], [-350, 860]], 12, 'asphalt', 0.22, 'Kloof Street');
+addRoad([[-350, 860], [-500, 940], [-650, 1000]], 10, 'asphalt', 0.22, 'Kloof Nek Road');
+addRoad([[-650, 1000], [-400, 1250], [-100, 1550], [150, 1800], [300, 1950]], 9, 'asphalt', 0.22, 'Tafelberg Road');
+addRoad([[-650, 1000], [-850, 1180], [-1100, 1380], [-1400, 1520], [-1720, 1420]], 10, 'asphalt', 0.22, 'Kloof Road');
 addRoad(
-  [[-460, -230], [-620, -150], [-760, -260], [-900, -120], [-1050, -230], [-1150, -150]],
-  9, 'asphalt', 0.22
-);
-addRoad(
-  [[-100, 220], [-150, 500], [-350, 800], [-600, 1000], [-300, 1300], [100, 1700], [300, 1950]],
-  10, 'asphalt', 0.22
+  [[-650, 1000], [-900, 820], [-1150, 700], [-1300, 450], [-1300, 200], [-1220, 0], [-1150, -150]],
+  9, 'asphalt', 0.22, 'Signal Hill Road'
 );
 
 const PARK_BLOCKS = new Set(['6,5']);

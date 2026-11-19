@@ -9,10 +9,10 @@ import { ColliderGrid } from './collision.js';
 import { playerTaxi } from './vehicles/models.js';
 import { Car } from './vehicles/car.js';
 import { createTraffic } from './vehicles/traffic.js';
-import { ChaseCamera } from './camera.js';
+import { ChaseCamera, lockPointer } from './camera.js';
 import { readDriving, wasPressed, releaseAll, endFrame } from './input.js';
 import { createCheatPrompt } from './cheats.js';
-import { createHud } from './hud.js';
+import { createHud, streetAt } from './hud.js';
 import * as audio from './audio.js';
 
 const START = { x: -247.2, z: -330, heading: 0 };
@@ -54,7 +54,7 @@ function build() {
 
 let world;
 const hud = createHud();
-const chase = new ChaseCamera(camera);
+const chase = new ChaseCamera(camera, canvas);
 const state = {
   cash: 350,
   minutes: PRESET_CLOCK.golden,
@@ -121,6 +121,7 @@ const cheatPrompt = createCheatPrompt({
 });
 
 const wind = new THREE.Vector2();
+let streetTimer = 0, road = '';
 let windT = 0;
 
 function respawn() {
@@ -166,7 +167,12 @@ function tick(dt) {
   state.minutes += sdt;
   audio.updateEngine(player.speed, input.throttle);
   const area = districtAt(player.pos.x, player.pos.z, player.pos.y);
-  hud.update(dt, { cash: state.cash, minutes: state.minutes, kmh: Math.abs(player.speed) * 3.6, area });
+  streetTimer -= dt;
+  if (streetTimer <= 0) {
+    streetTimer = 0.25;
+    road = streetAt(player.pos.x, player.pos.z);
+  }
+  hud.update(dt, { cash: state.cash, minutes: state.minutes, kmh: Math.abs(player.speed) * 3.6, area, road });
   hud.drawRadar(player, traffic.cars);
   endFrame();
 }
@@ -184,6 +190,8 @@ function start() {
   if (state.started || !world) return;
   state.started = true;
   titleEl.classList.add('hidden');
+  chase.enabled = true;
+  lockPointer(canvas);
   audio.initAudio();
 }
 
@@ -194,6 +202,6 @@ setTimeout(() => {
   startEl.textContent = 'Press Enter or click to start';
   window.addEventListener('keydown', (e) => { if (e.code === 'Enter') start(); });
   titleEl.addEventListener('click', start);
-  window.__tabletown = { world, state, camera, renderer, scene, applyCheat, tick };
+  window.__tabletown = { world, state, camera, renderer, scene, applyCheat, tick, chase };
   requestAnimationFrame(loop);
 }, 50);

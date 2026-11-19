@@ -29,6 +29,8 @@ export function fbm(x, z, octaves = 4) {
 }
 
 export const CITY = { minX: -470, maxX: 510, minZ: -490, maxZ: 230 };
+export const LIONS_HEAD = { x: -1500, z: 1100 };
+export const KLOOF_NEK = { x: -650, z: 1000 };
 
 export function coastDistance(x, z) {
   const bay = z - (-600 + 60 * Math.sin(x * 0.003));
@@ -46,17 +48,29 @@ function tableMountain(x, z) {
   return 710 * Math.pow(clamp(1 - (d - 120) / 1780, 0, 1), 1.8);
 }
 
+// Rocky dome head on a shoulder, with the body ridge running north-east to Signal Hill.
 function lionsHead(x, z) {
-  const r = Math.hypot(x + 1500, z - 1100);
-  const t = clamp(1 - r / 1000, 0, 1);
-  return 380 * Math.pow(t, 1.5) + 290 * Math.pow(clamp(1 - r / 260, 0, 1), 0.7);
+  const dx = x - LIONS_HEAD.x, dz = z - LIONS_HEAD.z;
+  const r = Math.hypot(dx, dz);
+  const u = dx * 0.27 - dz * 0.96;
+  const v = dx * 0.96 + dz * 0.27;
+  const along = u > 0 ? u / 700 : u / 380;
+  const body = 170 * Math.exp(-(along ** 2) - (v / 300) ** 2);
+  const base = 130 * Math.pow(clamp(1 - r / 1000, 0, 1), 1.4);
+  const hr = Math.hypot(dx + 35, dz - 25);
+  const dome = 260 * Math.pow(clamp(1 - (hr / 250) ** 2, 0, 1), 0.85);
+  return base + body + dome;
 }
 
 function signalHill(x, z) {
   const dx = x + 1150, dz = z + 150;
   const u = dx * 0.5 + dz * -0.85;
   const v = dx * 0.85 + dz * 0.5;
-  return 340 * Math.exp(-((u / 700) ** 2) - (v / 380) ** 2);
+  return 270 * Math.exp(-((u / 700) ** 2) - (v / 380) ** 2);
+}
+
+function kloofNek(x, z) {
+  return 120 * Math.exp(-(((x - KLOOF_NEK.x) / 380) ** 2) - ((z - KLOOF_NEK.z) / 260) ** 2);
 }
 
 function devilsPeak(x, z) {
@@ -77,11 +91,12 @@ export function heightAt(x, z) {
   const westRise = clamp((-150 - x) * 0.1, 0, 70) * smoothstep(-700, -400, z);
   const land = smoothstep(-20, 60, d);
   h += westRise * land;
-  h += (signalHill(x, z) + lionsHead(x, z) + tableMountain(x, z) + devilsPeak(x, z)) * land;
+  h += (signalHill(x, z) + lionsHead(x, z) + kloofNek(x, z) + tableMountain(x, z) + devilsPeak(x, z)) * land;
   const rough = (1 - cityFlatness(x, z)) * land;
   if (rough > 0) {
-    const mountain = clamp(h / 300, 0.15, 1);
-    h += (fbm(x * 0.004, z * 0.004, 5) - 0.5) * 70 * mountain * rough;
+    const mountain = clamp((h - 150) / 400, 0.08, 1);
+    h += (fbm(x * 0.004, z * 0.004, 5) - 0.5) * 50 * mountain * rough;
+    h += (fbm(x * 0.03, z * 0.03, 2) - 0.5) * 14 * mountain * mountain * rough;
   }
   return h;
 }

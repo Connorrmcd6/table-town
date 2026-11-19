@@ -1,13 +1,37 @@
 import * as THREE from 'three';
-import { heightAt, coastDistance, CITY, DISA_PARK } from './heightmap.js';
+import { heightAt, coastDistance, DISA_PARK } from './heightmap.js';
 import { MeshBuilder, FACE } from './geometry.js';
-import { ROADS, buildRoads } from './city.js';
+import { ROADS, buildRoads, GRID_X, GRID_Z } from './city.js';
 import { addSuburbHouse, fillPerimeter, footprintHeights } from './houses.js';
 import { asphaltTexture, officeTextures, houseFacadeTexture } from './textures.js';
 
 const CELL = 100;
-const X_LINES = [-1700, 1700];
-const Z_LINES = [-680, 2120];
+const CITY_X0 = GRID_X[0], CITY_X1 = GRID_X[GRID_X.length - 1];
+const CITY_Z0 = GRID_Z[0], CITY_Z1 = GRID_Z[GRID_Z.length - 1];
+
+// Continue the city's own street lines outward so suburbs butt straight onto the grid.
+function lines(cityLines, min, max) {
+  const out = new Set(cityLines);
+  for (let v = cityLines[0] - CELL; v >= min; v -= CELL) out.add(v);
+  for (let v = cityLines[cityLines.length - 1] + CELL; v <= max; v += CELL) out.add(v);
+  return [...out].sort((a, b) => a - b);
+}
+const XS = lines(GRID_X, -1800, 1750);
+const ZS = lines(GRID_Z, -700, 2150);
+
+function lineIndex(arr, v) {
+  let lo = 0, hi = arr.length - 2;
+  if (v < arr[0] || v >= arr[arr.length - 1]) return -1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (arr[mid] <= v) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
+}
+
+const insideCityX = (a, b) => a >= CITY_X0 && b <= CITY_X1;
+const insideCityZ = (a, b) => a >= CITY_Z0 && b <= CITY_Z1;
 const ROAD_W = 8;
 const APARTMENT_COLOURS = ['#efe9dc', '#e2ddd2', '#d6dde2', '#ece4d4', '#cfd6d9', '#f4f1ea'];
 
@@ -17,14 +41,9 @@ function rand() {
   return (seed - 1) / 2147483646;
 }
 
-function overlapsCity(x0, x1, z0, z1) {
-  return x1 > CITY.minX - 5 && x0 < CITY.maxX + 5 && z1 > CITY.minZ - 5 && z0 < CITY.maxZ + 5;
-}
-
-function cellValid(x0, z0) {
-  const x1 = x0 + CELL, z1 = z0 + CELL;
-  const cx = x0 + CELL / 2, cz = z0 + CELL / 2;
-  if (overlapsCity(x0, x1, z0, z1)) return false;
+function cellValid(x0, x1, z0, z1) {
+  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+  if (insideCityX(x0, x1) && insideCityZ(z0, z1)) return false;
   if (cx > 380 && cz < -540) return false;
   if (Math.hypot(cx - DISA_PARK.x, cz - DISA_PARK.z) < 85) return false;
   if (coastDistance(cx, cz) < 50) return false;
@@ -71,22 +90,26 @@ export function createSuburbs(scene, colliders) {
   const specialRoads = ROADS.slice();
   const valid = new Set();
   const cells = [];
-  for (let x0 = X_LINES[0]; x0 < X_LINES[1]; x0 += CELL) {
-    for (let z0 = Z_LINES[0]; z0 < Z_LINES[1]; z0 += CELL) {
-      if (cellValid(x0, z0)) {
-        valid.add(`${x0},${z0}`);
-        cells.push([x0, z0]);
+  for (let i = 0; i < XS.length - 1; i++) {
+    for (let j = 0; j < ZS.length - 1; j++) {
+      const [x0, x1, z0, z1] = [XS[i], XS[i + 1], ZS[j], ZS[j + 1]];
+      if (cellValid(x0, x1, z0, z1)) {
+        valid.add(`${i},${j}`);
+        cells.push([x0, x1, z0, z1]);
       }
     }
   }
 
   const edges = new Map();
   const addEdge = (ax, az, bx, bz, lift) => {
+    const onCityRoad = ax === bx
+      ? GRID_X.includes(ax) && insideCityZ(Math.min(az, bz), Math.max(az, bz))
+      : GRID_Z.includes(az) && insideCityX(Math.min(ax, bx), Math.max(ax, bx));
+    if (onCityRoad) return;
     const key = `${ax},${az},${bx},${bz}`;
     if (!edges.has(key)) edges.set(key, { points: [[ax, az], [bx, bz]], width: ROAD_W, surface: 'asphalt', lift });
   };
-  for (const [x0, z0] of cells) {
-    const x1 = x0 + CELL, z1 = z0 + CELL;
+  for (const [x0, x1, z0, z1] of cells) {
     addEdge(x0, z0, x1, z0, 0.17);
     addEdge(x0, z1, x1, z1, 0.17);
     addEdge(x0, z0, x0, z1, 0.15);
@@ -103,9 +126,13 @@ export function createSuburbs(scene, colliders) {
   const roofs = new MeshBuilder();
   const flats = new MeshBuilder();
   const trees = [];
-  for (const [x0, z0] of cells) {
-    const inner = { x0: x0 + ROAD_W / 2 + 2, x1: x0 + CELL - ROAD_W / 2 - 2, z0: z0 + ROAD_W / 2 + 2, z1: z0 + CELL - ROAD_W / 2 - 2 };
-    const cx = x0 + CELL / 2, cz = z0 + CELL / 2;
+  for (const [x0, x1, z0, z1] of cells) {
+    const pad = (cityLine) => (cityLine ? 9 : ROAD_W / 2 + 2);
+    const inner = {
+      x0: x0 + pad(GRID_X.includes(x0)), x1: x1 - pad(GRID_X.includes(x1)),
+      z0: z0 + pad(GRID_Z.includes(z0)), z1: z1 - pad(GRID_Z.includes(z1)),
+    };
+    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
     const h = heightAt(cx, cz);
     const seaPoint = cx < -1300;
     const apartments = h < 80 && rand() < (seaPoint ? 0.6 : 0.12);
@@ -158,9 +185,7 @@ export function createSuburbs(scene, colliders) {
 
   return {
     isSuburb(x, z) {
-      const x0 = X_LINES[0] + Math.floor((x - X_LINES[0]) / CELL) * CELL;
-      const z0 = Z_LINES[0] + Math.floor((z - Z_LINES[0]) / CELL) * CELL;
-      return valid.has(`${x0},${z0}`);
+      return valid.has(`${lineIndex(XS, x)},${lineIndex(ZS, z)}`);
     },
     setWindowGlow(v) {
       flatsMat.emissiveIntensity = v;

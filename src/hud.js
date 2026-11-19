@@ -4,10 +4,12 @@ export function createHud() {
   const $ = (id) => document.getElementById(id);
   const money = $('money'), clock = $('clock'), speedo = $('speed'), district = $('district'), notice = $('notice'), subtitle = $('subtitle');
   const radar = $('radar');
+  const street = $('street');
   const rctx = radar.getContext('2d');
   let districtTimer = 0, noticeTimer = 0, subtitleTimer = 0, lastDistrict = '';
 
-  function update(dt, { cash, minutes, kmh, area }) {
+  function update(dt, { cash, minutes, kmh, area, road }) {
+    if (street.textContent !== road) street.textContent = road;
     money.textContent = `R${String(Math.floor(cash)).padStart(8, '0')}`;
     const h = Math.floor(minutes / 60) % 24, m = Math.floor(minutes % 60);
     clock.textContent = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
@@ -91,4 +93,22 @@ export function createHud() {
   }
 
   return { update, notify, say, drawRadar };
+}
+
+const NAMED = () => ROADS.filter((r) => r.name);
+let named = null;
+
+export function streetAt(x, z) {
+  named = named || NAMED();
+  let best = null, bestD = Infinity;
+  for (const r of named) {
+    for (let i = 0; i < r.points.length - 1; i++) {
+      const [ax, az] = r.points[i], [bx, bz] = r.points[i + 1];
+      const dx = bx - ax, dz = bz - az;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz)));
+      const d = Math.hypot(x - ax - dx * t, z - az - dz * t) - r.width / 2;
+      if (d < bestD) { bestD = d; best = r.name; }
+    }
+  }
+  return bestD < 3 ? best : '';
 }

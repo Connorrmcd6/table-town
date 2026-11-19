@@ -10,6 +10,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1410; }
 #money { font-family: 'Anton', Impact, sans-serif; font-size: 38px; color: #3f9e3a; letter-spacing: 1px; text-shadow: 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000; }
 
 #radar { position: absolute; left: 26px; bottom: 26px; width: 180px; height: 180px; }
+#street { position: absolute; left: 216px; bottom: 66px; font-size: 20px; font-weight: 500; color: #f4d8a0; text-shadow: 2px 2px 0 #000; }
 #speed { position: absolute; left: 216px; bottom: 30px; font-size: 26px; font-weight: 700; text-shadow: 2px 2px 0 #000; }
 
 #district {

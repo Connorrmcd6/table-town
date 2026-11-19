@@ -5,7 +5,7 @@ import { vehicleCircles } from './pedestrians.js';
 
 const COP_LOOK = {
   skin: '#5a3a28', top: '#1d2a4a', bottom: '#151c30', shoes: '#111', hair: '#120c08', hat: '#1d2a4a',
-  hairStyle: 'cap', longSleeves: true, shorts: false, scale: 1,
+  hairStyle: 'cap', outfit: 'uniform', shoeStyle: 'boot', shorts: false, scale: 1,
 };
 const SKINS = ['#4a2e1e', '#5a3a28', '#7a5038', '#8f6040', '#c48f68', '#e0b896'];
 const RUN = 6.8, GRAB_RANGE = 1.4, SHOOT_RANGE = 26, KEEP_AWAY = 9;

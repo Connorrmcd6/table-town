@@ -827,7 +827,8 @@ function tick(dt) {
     hitByTraffic(walker, [...traffic.cars, ...cops]);
     if (active && !picker.open && !walker.busy && !walker.airborne) attack(current);
     walker.arms = !walker.busy && aiming && armed ? { mode: 'aim', pitch: chase.aimPitch }
-      : weapons.state.strike ? { mode: weapons.state.strike.kind, k: weapons.state.strike.k } : null;
+      : weapons.state.strike ? { mode: weapons.state.strike.kind, k: weapons.state.strike.k }
+        : current === 'bat' && !walker.busy && !walker.airborne ? { mode: 'batReady' } : null;
   } else if (vehicle) runOverCops(vehicle);
   traffic.update(sdt, vehicle, onImpact, { signalsOff: state.loadshedding, lights: sky.state.lights, walker: state.onFoot && !walker.dead ? walker : null, grid: colliders });
 

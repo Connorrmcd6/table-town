@@ -8,7 +8,7 @@ const JUMP_SPEED = 6, GRAVITY = 18;
 const CLIMB_MIN = 1.0, CLIMB_MAX = 7.5, VAULT_MAX = 2.0, VAULT_THICK = 1.0;
 export const PLAYER_LOOK = {
   skin: '#7a5038', top: '#8a1c2b', bottom: '#1b1b1b', shoes: '#f4f4f0', hair: '#120c08', hat: '#d9c38a',
-  hairStyle: 'bucket', longSleeves: false, shorts: false, scale: 1,
+  hairStyle: 'bucket', outfit: 'tee', accessory: 'chain', shorts: false, scale: 1,
 };
 
 const roofCache = new WeakMap();

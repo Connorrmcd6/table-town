@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Table Town</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@500;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <div id="hud">
+      <div id="topright">
+        <div id="clock">17:30</div>
+        <div id="money">R00000350</div>
+      </div>
+      <canvas id="radar" width="180" height="180"></canvas>
+      <div id="speed">0 km/h</div>
+      <div id="district"></div>
+      <div id="notice"></div>
+      <div id="subtitle"></div>
+      <div id="cheatbox"><span>CHEAT</span><input id="cheatinput" autocomplete="off" spellcheck="false" maxlength="20" /></div>
+    </div>
+    <div id="title">
+      <h1>TABLE TOWN</h1>
+      <p class="tag">A Kaapse open-world caper</p>
+      <div class="controls">
+        <div><b>W A S D</b> / arrows - drive</div>
+        <div><b>Space</b> - handbrake</div>
+        <div><b>H</b> - hooter &nbsp; <b>G</b> - gaartjie</div>
+        <div><b>C</b> - camera &nbsp; <b>R</b> - reset &nbsp; <b>M</b> - mute</div>
+        <div><b>`</b> or <b>/</b> - enter a cheat</div>
+        <div class="hint">Rumour has it SOUTHEASTER does something.</div>
+      </div>
+      <p id="start">Loading the Mother City...</p>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

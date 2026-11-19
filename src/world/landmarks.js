@@ -145,37 +145,137 @@ function createNoonGun(scene, colliders) {
   colliders.push({ minX: x - 4, maxX: x + 4, minZ: z - 13, maxZ: z - 7, top: h + 4 });
 }
 
-function createCableCar(scene) {
-  const lower = new THREE.Vector3(toWorld(300), 0, toWorld(1955));
-  lower.y = heightAt(lower.x, lower.z);
-  const upper = new THREE.Vector3(toWorld(450), 0, toWorld(2515));
-  upper.y = heightAt(upper.x, upper.z);
-  const stationMat = new THREE.MeshLambertMaterial({ color: '#d8d4cc' });
-  for (const p of [lower, upper]) {
-    const s = new THREE.Mesh(new THREE.BoxGeometry(18, 10, 14), stationMat);
-    s.position.copy(p).add(new THREE.Vector3(0, 4, 0));
-    s.castShadow = true;
-    scene.add(s);
-  }
-  const a = lower.clone().add(new THREE.Vector3(0, 9, 0));
-  const b = upper.clone().add(new THREE.Vector3(0, 9, 0));
-  const cable = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), new THREE.LineBasicMaterial({ color: '#222' }));
-  scene.add(cable);
+const CABLE_DWELL = 12, CABLE_TRAVEL = 40, CABLE_LIFT = 6.8, BOARD_RANGE = 7;
+
+// A station block sitting on the slope, set into the ground at its lowest corner.
+function station(scene, colliders, x, z, w, h, d, mat) {
+  let min = Infinity;
+  for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, 0]]) min = Math.min(min, heightAt(x + (dx * w) / 2, z + (dz * d) / 2));
+  const base = min - 1;
+  const top = Math.max(base + h, heightAt(x, z) + 4);
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, top - base, d), mat);
+  m.position.set(x, (base + top) / 2, z);
+  m.castShadow = m.receiveShadow = true;
+  scene.add(m);
+  colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2, top });
+}
+
+function cabinMesh() {
+  const red = new THREE.MeshLambertMaterial({ color: '#c0392b' });
+  const grey = new THREE.MeshLambertMaterial({ color: '#3a3d42' });
+  const glass = new THREE.MeshLambertMaterial({ color: '#9fc7dd', transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide });
   const cabin = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 3, 12), new THREE.MeshLambertMaterial({ color: '#c0392b' }));
-  body.position.y = -4;
-  const glass = new THREE.Mesh(new THREE.CylinderGeometry(2.65, 2.65, 1.2, 12), new THREE.MeshLambertMaterial({ color: '#2a3a48' }));
-  glass.position.y = -3.6;
-  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.3, 4, 0.3), new THREE.MeshLambertMaterial({ color: '#333' }));
-  arm.position.y = -1.5;
-  cabin.add(body, glass, arm);
+  const part = (geo, mat, y) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.y = y;
+    m.castShadow = mat !== glass;
+    cabin.add(m);
+  };
+  part(new THREE.CylinderGeometry(3.2, 3.0, 0.4, 16), red, -6.6);
+  part(new THREE.CylinderGeometry(3.2, 3.2, 1.0, 16, 1, true), red, -5.9);
+  part(new THREE.CylinderGeometry(3.2, 3.2, 1.6, 16, 1, true), glass, -4.6);
+  part(new THREE.CylinderGeometry(3.3, 3.2, 0.6, 16), red, -3.5);
+  part(new THREE.CylinderGeometry(1.2, 2.2, 0.6, 12), grey, -2.9);
+  part(new THREE.BoxGeometry(0.35, 2.6, 0.35), grey, -1.4);
+  part(new THREE.BoxGeometry(1.6, 0.5, 0.6), grey, 0);
+  for (let i = 0; i < 6; i++) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.6, 0.18), red);
+    post.position.set(Math.cos((i / 6) * Math.PI * 2) * 3.15, -4.6, Math.sin((i / 6) * Math.PI * 2) * 3.15);
+    cabin.add(post);
+  }
+  return cabin;
+}
+
+// Timetabled cableway: the cabin waits at a station, then crosses (turning slowly, like the real Rotair).
+function createCableCar(scene, colliders) {
+  const dock = (rx, rz) => {
+    const v = new THREE.Vector3(toWorld(rx), 0, toWorld(rz));
+    v.y = heightAt(v.x, v.z);
+    return v;
+  };
+  const lower = dock(300, 1955), upper = dock(450, 2503);
+  const dir = new THREE.Vector3(upper.x - lower.x, 0, upper.z - lower.z).normalize();
+  const side = new THREE.Vector3(dir.z, 0, -dir.x);
+  const stone = new THREE.MeshLambertMaterial({ color: '#d8d4cc' });
+  station(scene, colliders, lower.x + side.x * 13, lower.z + side.z * 13, 14, 9, 16, stone);
+  station(scene, colliders, upper.x + dir.x * 14, upper.z + dir.z * 14, 18, 8, 12, stone);
+
+  // A railing along the summit cliff edge, with a gap where the cabin docks.
+  const rail = new THREE.MeshLambertMaterial({ color: '#5b5f63' });
+  const edgeZ = toWorld(2501);
+  for (let rx = 330; rx < 560; rx += 10) {
+    const x = toWorld(rx);
+    if (Math.abs(x - upper.x) < 5) continue;
+    const y = heightAt(x, edgeZ + 1);
+    const seg = new THREE.Mesh(new THREE.BoxGeometry(toWorld(10), 0.12, 0.12), rail);
+    seg.position.set(x, y + 1.05, edgeZ);
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.1, 0.12), rail);
+    post.position.set(x - toWorld(5), y + 0.5, edgeZ);
+    scene.add(seg, post);
+    colliders.push({ minX: x - toWorld(5), maxX: x + toWorld(5), minZ: edgeZ - 0.3, maxZ: edgeZ + 0.3, top: y + 1.1 });
+  }
+
+  const a = lower.clone().setY(lower.y + CABLE_LIFT);
+  const b = upper.clone().setY(upper.y + CABLE_LIFT);
+  for (const off of [-0.8, 0.8]) {
+    const o = side.clone().multiplyScalar(off);
+    scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([a.clone().add(o), b.clone().add(o)]), new THREE.LineBasicMaterial({ color: '#222' })));
+  }
+  const cabin = cabinMesh();
   scene.add(cabin);
-  let t = 0;
-  return (dt) => {
-    t += dt / 70;
-    const k = 0.5 - 0.5 * Math.cos(t * Math.PI * 2);
-    cabin.position.lerpVectors(a, b, k);
-    cabin.rotation.y += dt * 0.15;
+
+  const stations = {
+    lower: { name: 'Lower Cable Station', dock: lower, exit: lower.clone().addScaledVector(dir, -5), heading: Math.atan2(-dir.x, -dir.z) },
+    upper: { name: 'Table Mountain', dock: upper, exit: upper.clone().addScaledVector(dir, 5), heading: Math.atan2(-dir.x, -dir.z) },
+  };
+  for (const s of Object.values(stations)) s.exit.y = heightAt(s.exit.x, s.exit.z);
+  const st = { at: 'lower', timer: CABLE_DWELL, from: null, to: null, t: 0 };
+  const other = (k) => (k === 'lower' ? 'upper' : 'lower');
+  const place = () => {
+    if (st.at) cabin.position.copy(st.at === 'lower' ? a : b);
+    else {
+      const k = 0.5 - 0.5 * Math.cos(st.t * Math.PI);
+      const [p, q] = st.from === 'lower' ? [a, b] : [b, a];
+      cabin.position.lerpVectors(p, q, k);
+    }
+  };
+  place();
+  const spot = new THREE.Vector3();
+
+  return {
+    stations,
+    get docked() { return st.at; },
+    // Station whose boarding spot `pos` is standing at, if any.
+    near(pos) {
+      for (const [key, s] of Object.entries(stations)) {
+        if (Math.hypot(pos.x - s.dock.x, pos.z - s.dock.z) < BOARD_RANGE && Math.abs(pos.y - s.dock.y) < 4) return key;
+      }
+      return null;
+    },
+    // Seconds until the cabin is next waiting at station `key`.
+    wait(key) {
+      if (st.at === key) return 0;
+      if (st.at) return st.timer + CABLE_TRAVEL;
+      return (1 - st.t) * CABLE_TRAVEL + (st.to === key ? 0 : CABLE_DWELL + CABLE_TRAVEL);
+    },
+    // Where a rider stands on the cabin floor, and which way they face.
+    rider(out = spot) {
+      cabin.updateMatrixWorld();
+      out.set(1.1, -6.4, 0.6);
+      cabin.localToWorld(out);
+      return { pos: out, heading: cabin.rotation.y + Math.PI / 2 };
+    },
+    update(dt) {
+      if (st.at) {
+        st.timer -= dt;
+        if (st.timer <= 0) Object.assign(st, { from: st.at, to: other(st.at), at: null, t: 0 });
+      } else {
+        st.t += dt / CABLE_TRAVEL;
+        cabin.rotation.y += dt * 0.16;
+        if (st.t >= 1) Object.assign(st, { at: st.to, timer: CABLE_DWELL, from: null, to: null });
+      }
+      place();
+    },
   };
 }
 
@@ -268,12 +368,13 @@ export function createLandmarks(scene, colliders, { isSuburb, roads, parks }) {
   createHarbour(scene);
   createMinaret(scene, colliders);
   createNoonGun(scene, colliders);
-  const updateCable = createCableCar(scene);
+  const cableCar = createCableCar(scene, colliders);
   const tablecloth = createTablecloth(scene);
   return {
     tablecloth,
+    cableCar,
     update(dt) {
-      updateCable(dt);
+      cableCar.update(dt);
       tablecloth.update(dt);
     },
   };

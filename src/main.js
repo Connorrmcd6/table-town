@@ -33,6 +33,7 @@ const START_CLOCK = 16 * 60 + 30;
 const SUNDOWNER_STOPS = [6 * 60 + 15, 12 * 60, 17 * 60 + 30, 21 * 60];
 const MAX_PARKED = 6;
 const ENTER_RANGE = 2.2;
+const CABLE_FARE = 15;
 const VEHICLE_NAMES = { taxi: 'taxi', golf: 'Citi Golf', bakkie: 'bakkie', police: 'police car', scooter: 'Sixty60 bike', superbike: 'Ducati', sports: 'Ranger Raptor' };
 const JACKED_LINES = ['Haai! Jou ma se...!', "Voetsek! That's my car!", 'Eish! Not again!', 'Hey bru! Bring it back!', 'Ag no man, I just washed it!'];
 const HIT_LINES = ['Eish!', 'Watch where you drive, bru!', 'Aikona!', 'Jirre!'];
@@ -133,6 +134,7 @@ const state = {
   sinceHurt: 99,
   hospitalT: 0,
   overlay: null,
+  ride: null,
 };
 
 const controlled = () => (state.onFoot ? world.walker : world.vehicle);
@@ -328,6 +330,7 @@ function exitVehicle({ dead = false } = {}) {
 function respawnAt(spot, kind) {
   const { police, walker, weapons } = world;
   police.clear();
+  state.ride = null;
   if (kind === 'busted') {
     weapons.disarm();
   }
@@ -418,6 +421,45 @@ function hitByTraffic(walker, vehicles) {
 }
 
 const FOOT_CAMERA = { dist: 5.5, height: 2.4, look: 1.4, free: true };
+const RIDE_CAMERA = { dist: 15, height: 5, look: 1, free: true };
+
+function boardCable(key) {
+  const { cableCar } = world.landmarks;
+  if (state.cash < CABLE_FARE) {
+    hud.notify(`The cable car is R${CABLE_FARE}. You're skint.`, 2.5);
+    return;
+  }
+  state.cash -= CABLE_FARE;
+  state.ride = { to: key === 'lower' ? 'upper' : 'lower' };
+  world.walker.arms = null;
+  hud.notify(`Cable car to ${cableCar.stations[state.ride.to].name}. R${CABLE_FARE}.`, 2.5);
+}
+
+// Stand on the turning cabin floor until it docks, then step off at the far station.
+function rideCable(dt) {
+  const { walker, landmarks } = world;
+  const cable = landmarks.cableCar;
+  const r = cable.rider();
+  walker.pos.copy(r.pos);
+  walker.heading = r.heading;
+  walker.vel.set(0, 0);
+  walker.cameraProfile = RIDE_CAMERA;
+  walker.sync(dt);
+  if (cable.docked !== state.ride.to) return;
+  const s = cable.stations[state.ride.to];
+  state.ride = null;
+  walker.place(s.exit.x, s.exit.z, s.heading);
+  hud.notify(s.name === 'Table Mountain' ? 'Welcome to the top of Table Mountain' : s.name, 3);
+}
+
+// Prompt for the cableway when standing at a station: board now, or how long until the cabin arrives.
+function cablePrompt() {
+  const cable = world.landmarks.cableCar;
+  const key = cable.near(world.walker.pos);
+  if (!key) return null;
+  if (cable.docked === key) return `F - ride the cable car (R${CABLE_FARE})`;
+  return `Cable car arrives in ${Math.ceil(cable.wait(key))}s`;
+}
 const AIM_CAMERA = { dist: 3.4, height: 2.15, look: 1.85, side: 0.85, free: true, aim: true };
 const PUNCH_ASSIST = { range: 2.6, cone: Math.cos(THREE.MathUtils.degToRad(65)) };
 
@@ -767,15 +809,17 @@ function tick(dt) {
     if (wasPressed('Backquote') || wasPressed('Slash')) cheatPrompt.toggle();
     if (wasPressed('KeyC')) chase.cycle();
     if (wasPressed('KeyM')) hud.notify(audio.toggleMute() ? 'Sound off' : 'Sound on', 1.5);
-    if (state.onFoot) {
+    if (state.onFoot && !state.ride) {
       if (wasPressed('KeyF')) {
+        const station = world.landmarks.cableCar.near(world.walker.pos);
         const target = nearestEnterable();
-        if (target) enterVehicle(target);
+        if (station && world.landmarks.cableCar.docked === station && !world.walker.busy) boardCable(station);
+        else if (target) enterVehicle(target);
       }
       if (wasPressed('WheelUp')) world.weapons.cycle(-1);
       if (wasPressed('WheelDown')) world.weapons.cycle(1);
       updatePicker(dt);
-    } else {
+    } else if (!state.onFoot) {
       if (wasPressed('KeyH')) audio.hoot();
       if (wasPressed('KeyG') && world.vehicle.model.type === 'taxi') {
         const line = audio.gaartjie();
@@ -786,7 +830,7 @@ function tick(dt) {
     }
   }
 
-  if (picker.open && (!active || !state.onFoot)) closePicker();
+  if (picker.open && (!active || !state.onFoot || state.ride)) closePicker();
   const sdt = dt * state.timeScale * (picker.open ? 0.3 : 1);
   windT += sdt;
   if (state.windOn) {
@@ -820,9 +864,11 @@ function tick(dt) {
   const kind = WEAPONS[current].type;
   const armed = state.onFoot && kind === 'gun';
   const aiming = state.onFoot && active && !picker.open && ((armed && (isDown('Mouse2') || weapons.state.aimT > 0)) || kind === 'throw');
-  for (const [w, mesh] of Object.entries(walker.model.held)) mesh.visible = state.onFoot && w === current && (w !== 'c4' || weapons.state.ammo.c4 > 0);
+  for (const [w, mesh] of Object.entries(walker.model.held)) mesh.visible = state.onFoot && !state.ride && w === current && (w !== 'c4' || weapons.state.ammo.c4 > 0);
   walker.cameraProfile = aiming ? AIM_CAMERA : FOOT_CAMERA;
-  if (state.onFoot) {
+  landmarks.update(sdt);
+  if (state.ride) rideCable(sdt);
+  else if (state.onFoot) {
     walker.update(sdt, input, chase.viewYaw, { colliders, vehicles: [...traffic.cars, ...cops, ...parked], jump: active && wasPressed('Space'), aiming });
     hitByTraffic(walker, [...traffic.cars, ...cops]);
     if (active && !picker.open && !walker.busy && !walker.airborne) attack(current);
@@ -873,7 +919,6 @@ function tick(dt) {
   clearWrecks(sdt, me);
   world.streetlights.update(dt, me.pos);
   playerFill.position.set(me.pos.x, me.pos.y + 3.5, me.pos.z);
-  landmarks.update(sdt);
   chase.update(dt, controlled());
   keepCameraOutOfWalls(controlled(), colliders);
   state.minutes += sdt;
@@ -893,8 +938,9 @@ function tick(dt) {
   const ammo = weapons.state.ammo[current];
   hud.weapon(state.onFoot ? `${WEAPONS[current].label}${ammo !== undefined ? ` ${ammo}` : ''}` : '', aiming);
   let promptText = null;
-  if (state.onFoot && active) {
-    const t = nearestEnterable();
+  if (state.onFoot && active && !state.ride) {
+    promptText = cablePrompt();
+    const t = !promptText && nearestEnterable();
     if (t) promptText = `F - ${t.kind === 'parked' ? 'get in' : 'jack'} the ${VEHICLE_NAMES[t.car.model.type] || 'car'}`;
   }
   hud.prompt(promptText);

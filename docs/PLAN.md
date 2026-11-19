@@ -59,9 +59,9 @@ PS2-era geometry with modern lighting: warm golden-hour sky, haze, flat colours 
 - Wanted level (five stars) from crimes, SAPS pursuit through the street graph, sirens, busted and wasted respawns, health.
 - New vehicles: Sixty-ish delivery scooter, superbikes (about 255-290 km/h) and sports cars, with bike lean and seated riders.
 
-### Phase 3 - landmark set pieces: next
+### Phase 3 - landmark set pieces: in progress
 
-- Ride the cable car to the top of Table Mountain.
+- Ride the cable car to the top of Table Mountain (done: timetabled cabin from the end of Tafelberg Road, R15 fare, railed summit lookout).
 - Camps Bay and the Atlantic seaboard (Clifton, Sea Point promenade).
 - Blouberg beach across the bay with the classic Table Mountain view and kitesurfers.
 - V&A Waterfront with the Clock Tower and harbour.

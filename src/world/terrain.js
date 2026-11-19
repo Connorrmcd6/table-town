@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { heightAt, fbm, isBeach, atlanticShore, w as toWorld, WORLD_SCALE as S } from './heightmap.js';
+import { heightAt, fbm, isBeach, atlanticShore, WATERFRONT, w as toWorld, WORLD_SCALE as S } from './heightmap.js';
 
 // Grid lines `step` apart inside each [from, to, step] band and `sparseStep` apart elsewhere.
 function axisLines(min, max, bands, sparseStep) {
@@ -20,6 +20,13 @@ const FYNBOS = new THREE.Color('#8f9462');
 const ROCK = new THREE.Color('#a8957c');
 const CLIFF = new THREE.Color('#b8a088');
 const SEABED = new THREE.Color('#6f7f6a');
+const CONCRETE = new THREE.Color('#a8a49c');
+
+// The V&A and Duncan Dock quays are paved, not sand.
+const onQuay = (x, z) => {
+  const rx = x / S, rz = z / S;
+  return rz < -585 && ((rx > WATERFRONT.x0 && rx < WATERFRONT.x1 && rz > WATERFRONT.z0) || (rx >= WATERFRONT.x1 && rx < 1200 && rz > -900));
+};
 
 export function createTerrain() {
   const xs = axisLines(-9000, 9000, [[toWorld(-2550), toWorld(1700), 6], [toWorld(1700), toWorld(2200), 10]], 150);
@@ -61,6 +68,7 @@ export function createTerrain() {
     const beach = isBeach(x, z);
     const seaboard = !beach && z > toWorld(-450) && x < atlanticShore(z) + toWorld(450);
     if (h < 0) c.copy(SEABED);
+    else if (onQuay(x, z)) c.copy(CONCRETE);
     else if (seaboard && h < 1.6) c.copy(ROCK).multiplyScalar(0.8);
     else if (h < (beach ? 4.5 : seaboard ? 0 : 3.5)) c.copy(SAND);
     else {

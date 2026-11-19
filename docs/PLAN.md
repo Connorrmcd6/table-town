@@ -59,13 +59,13 @@ PS2-era geometry with modern lighting: warm golden-hour sky, haze, flat colours 
 - Wanted level (five stars) from crimes, SAPS pursuit through the street graph, sirens, busted and wasted respawns, health.
 - New vehicles: Sixty-ish delivery scooter, superbikes (about 255-290 km/h) and sports cars, with bike lean and seated riders.
 
-### Phase 3 - landmark set pieces: in progress
+### Phase 3 - landmark set pieces: done
 
 - Ride the cable car to the top of Table Mountain (done: timetabled cabin from the end of Tafelberg Road, R15 fare, railed summit lookout).
 - Camps Bay and the Atlantic seaboard (done: reshaped coast with Clifton's coves and the Camps Bay sweep under the Twelve Apostles, Beach Road and Victoria Road from Green Point, Camps Bay Drive from Kloof Nek, Sea Point apartments and promenade, the Camps Bay Strip, hillside villas, palms and boulders).
 - Blouberg beach across the bay with the classic Table Mountain view and kitesurfers (done: new north shore round Table Bay via Marine Drive through Milnerton, Beach Boulevard with holiday flats and beach houses, dunes, a kiosk and eight kitesurfers riding the southeaster).
-- V&A Waterfront with the Clock Tower and harbour.
-- Signal Hill and Lion's Head lookouts.
+- V&A Waterfront with the Clock Tower and harbour (done: quay with the Alfred and Victoria basin and a channel to the sea, Dock Road off Helen Suzman Blvd, the Clock Tower, a turning Ferris wheel, a waterfront mall, harbour sheds, basin cafés and moored boats).
+- Signal Hill and Lion's Head lookouts (done: a railed deck with viewers and benches at the top of Signal Hill Road, and a trail spiralling up from a Kloof Road trailhead to a railed Lion's Head summit with a trig beacon).
 
 ### Phase 4 - missions, factions and cheats
 
@@ -79,6 +79,9 @@ PS2-era geometry with modern lighting: warm golden-hour sky, haze, flat colours 
 - Shared sessions for friends via a small WebSocket server (Raspberry Pi) or a managed service.
 
 ## Known rough edges
+
+- Kloof Road and Camps Bay Drive still have short 35-45% stretches dropping off Kloof Nek; switchbacks would fix it.
+- Robben Island isn't in Table Bay yet.
 
 - AI traffic drives through cars you've left parked.
 - AI cars can briefly overlap at junctions.

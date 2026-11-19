@@ -5,10 +5,12 @@ import { createCity } from './world/city.js';
 import { createLandmarks } from './world/landmarks.js';
 import { createSeaboard } from './world/seaboard.js';
 import { createBlouberg } from './world/blouberg.js';
+import { createWaterfront } from './world/waterfront.js';
+import { createLookouts } from './world/lookouts.js';
 import { createSuburbs } from './world/suburbs.js';
 import { createStreetlights } from './world/streetlights.js';
 import { districtAt, atlanticShore, atlanticLine, bloubergZ, DISA_PARK, w as toWorld } from './world/heightmap.js';
-import { createMapMenu } from './mapmenu.js';
+import { createMapMenu, BOUNDS as MAP_BOUNDS } from './mapmenu.js';
 import { ColliderGrid } from './collision.js';
 import { playerTaxi, makeVehicle, seatRider } from './vehicles/models.js';
 import { clearPose, addPistol, addArsenal } from './people/person.js';
@@ -85,9 +87,11 @@ function build() {
   const suburbs = createSuburbs(scene, city.colliders);
   const roads = buildRoadIndex(ROADS);
   createJunctions(scene, roads);
-  const landmarks = createLandmarks(scene, city.colliders, { isSuburb: suburbs.isSuburb, roads, parks: city.blocks.filter((b) => b.park) });
+  const lookouts = createLookouts(scene, city.colliders);
+  const landmarks = createLandmarks(scene, city.colliders, { isSuburb: suburbs.isSuburb, roads, parks: city.blocks.filter((b) => b.park), keepClear: lookouts.keepClear });
   const seaboard = createSeaboard(scene, city.colliders, roads);
   const blouberg = createBlouberg(scene, city.colliders);
+  const waterfront = createWaterfront(scene, city.colliders);
   const streetlights = createStreetlights(scene, city.colliders, roads);
   const traffic = createTraffic(scene, city.colliders, [...cityEdges(), ...routeEdges(), ...suburbs.edges], 90, roads);
   const colliders = new ColliderGrid(city.colliders);
@@ -108,6 +112,8 @@ function build() {
     ...suburbs.walkRects,
     ...seaboard.walkRects,
     ...blouberg.walkRects,
+    ...waterfront.walkRects,
+    ...lookouts.walkRects,
   ];
   const peds = createPedestrians(scene, walkRects, 50);
   const pickups = createPickups(scene, walkRects);
@@ -121,7 +127,7 @@ function build() {
     scene.add(model.group);
     return new Car(model, toWorld(-180) + dx, showroomZ, Math.PI / 2);
   });
-  return { sky, city, suburbs, seaboard, blouberg, landmarks, streetlights, colliders, vehicle, traffic, headlight, roads, walker, peds, police, parked, weapons, pickups, hospital, wrecks };
+  return { sky, city, suburbs, seaboard, blouberg, waterfront, lookouts, landmarks, streetlights, colliders, vehicle, traffic, headlight, roads, walker, peds, police, parked, weapons, pickups, hospital, wrecks };
 }
 
 let world;
@@ -877,6 +883,7 @@ function tick(dt) {
   walker.cameraProfile = aiming ? AIM_CAMERA : FOOT_CAMERA;
   landmarks.update(sdt);
   world.blouberg.update(sdt);
+  world.waterfront.update(sdt);
   if (state.ride) rideCable(sdt);
   else if (state.onFoot) {
     walker.update(sdt, input, chase.viewYaw, { colliders, vehicles: [...traffic.cars, ...cops, ...parked], jump: active && wasPressed('Space'), aiming });
@@ -957,7 +964,7 @@ function tick(dt) {
   const wp = world.mapMenu.track(focus.pos, dt);
   if (wp?.arrived) hud.notify(`You've arrived: ${wp.arrived}`, 3);
   hud.waypoint(wp && !wp.arrived ? wp : null);
-  hud.drawRadar(focus, traffic.cars, cops, wp && !wp.arrived ? wp : null);
+  hud.drawRadar(focus, traffic.cars, cops, wp && !wp.arrived ? wp : null, world.mapMenu.terrain, MAP_BOUNDS);
   endFrame();
 }
 
@@ -975,7 +982,7 @@ function loop(now) {
 
 // Places worth driving to, for the map's list and waypoints.
 function placesOfInterest() {
-  const { landmarks, hospital } = world;
+  const { landmarks, hospital, waterfront, lookouts } = world;
   const cable = landmarks.cableCar.stations;
   const shore = (rz, off) => ({ x: atlanticShore(toWorld(rz)) + toWorld(off), z: toWorld(rz) });
   return [
@@ -985,11 +992,13 @@ function placesOfInterest() {
     { name: 'Table Mountain summit', kind: 'cable', x: cable.upper.exit.x, z: cable.upper.exit.z },
     { name: 'Bike showroom', kind: 'shop', x: toWorld(-180) + 20, z: toWorld(-180) - 6 },
     { name: 'Bo-Kaap', kind: 'place', x: toWorld(-180), z: toWorld(-130) },
+    { name: 'V&A Waterfront', kind: 'place', x: waterfront.tower.x - 12, z: waterfront.tower.z },
     { name: 'Duncan Dock', kind: 'place', x: toWorld(800), z: toWorld(-700) },
     { name: 'Disa Park', kind: 'place', x: DISA_PARK.x, z: DISA_PARK.z },
-    { name: 'Noon Gun', kind: 'view', x: toWorld(-1150), z: toWorld(-150) },
+    { name: lookouts.signal.name, kind: 'view', x: lookouts.signal.x, z: lookouts.signal.z },
     { name: 'Kloof Nek', kind: 'view', x: toWorld(-650), z: toWorld(1000) },
-    { name: "Lion's Head", kind: 'view', x: toWorld(-1535), z: toWorld(1075) },
+    { name: lookouts.lion.trailhead.name, kind: 'view', x: lookouts.lion.trailhead.x, z: lookouts.lion.trailhead.z },
+    { name: lookouts.lion.summit.name, kind: 'view', x: lookouts.lion.summit.x, z: lookouts.lion.summit.z },
     { name: 'Sea Point promenade', kind: 'beach', x: atlanticLine(toWorld(300)) + toWorld(52), z: toWorld(300) },
     { name: 'Clifton beaches', kind: 'beach', ...shore(1430, 25) },
     { name: 'Camps Bay beach', kind: 'beach', ...shore(1850, 90) },

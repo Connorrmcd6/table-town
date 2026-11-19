@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { heightAt, isBeach, w as toWorld } from './world/heightmap.js';
 
-const BOUNDS = { x0: toWorld(-2500), x1: toWorld(2400), z0: toWorld(-2950), z1: toWorld(2750) };
+export const BOUNDS = { x0: toWorld(-2500), x1: toWorld(2400), z0: toWorld(-2950), z1: toWorld(2750) };
 const TERRAIN_RES = 5;
 const ARRIVE = 22;
 
@@ -79,7 +79,7 @@ export function createMapMenu({ scene, getPlayer, getCops, getRoads, pois, onOpe
   const info = document.getElementById('mapinfo');
   const list = document.getElementById('poilist');
   const beam = beacon(scene);
-  let terrain = null;
+  const terrain = terrainImage();
   let open = false, tab = 'map';
   const view = { cx: 0, cz: 0, scale: 0.4 };
   let drag = null, hover = null;
@@ -175,7 +175,6 @@ export function createMapMenu({ scene, getPlayer, getCops, getRoads, pois, onOpe
   function show(which = 'map') {
     if (open) return;
     open = true;
-    terrain = terrain || terrainImage();
     const p = getPlayer();
     view.cx = p.pos.x;
     view.cz = p.pos.z;
@@ -308,6 +307,7 @@ export function createMapMenu({ scene, getPlayer, getCops, getRoads, pois, onOpe
   }
 
   return {
+    terrain,
     get isOpen() { return open; },
     get tab() { return tab; },
     get waypoint() { return waypoint; },

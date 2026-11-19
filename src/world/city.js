@@ -90,6 +90,10 @@ addRoad(SEABOARD_ZS.filter((z) => z >= 900).map(seaboardPoint), 10, 'asphalt', 0
 addRoad([...scalePts([[-650, 1000], [-850, 1250], [-1100, 1480], [-1350, 1660]]), CAMPS_BAY_JOIN], 10, 'asphalt', 0.32, 'Camps Bay Drive', true);
 addRoad([...scalePts([[-850, 1250], [-1100, 1300], [-1400, 1520]]), CLIFTON_JOIN], 10, 'asphalt', 0.32, 'Kloof Road', true);
 
+// Into the V&A Waterfront off Helen Suzman Blvd, round the basin to the Clock Tower quay.
+export const DOCK_ROAD = [[-300, -575], [-300, -700], [-200, -805], [40, -805]];
+addRoad(scalePts(DOCK_ROAD), 10, 'asphalt', 0.32, 'Dock Road', true);
+
 // Round Table Bay to Bloubergstrand: Marine Drive up the east shore, then Beach Boulevard behind the dunes.
 export const BLOUBERG_ROAD_OFFSET = 180;
 const BLOUBERG_XS = Array.from({ length: 13 }, (_, i) => 925 - i * 125);

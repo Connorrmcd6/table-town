@@ -76,11 +76,23 @@ function northShore(x, z) {
   return Math.min((bloubergZ(x) - z) / Math.sqrt(1 + slope * slope), x + 700);
 }
 
+// The V&A Waterfront: a quay built out into the bay west of Duncan Dock, with the Alfred and Victoria basin
+// cut into it and a channel through the breakwater to the sea.
+export const WATERFRONT = { x0: -350, x1: 380, z0: -840, basin: { x0: -120, x1: 230, z0: -780, z1: -660 }, channel: { x0: 140, x1: 210 } };
+const inside = (x, z, x0, x1, z0, z1) => Math.min(x - x0, x1 - x, z - z0, z1 - z);
+
+function waterfront(x, z) {
+  const { x0, x1, z0, basin, channel } = WATERFRONT;
+  const quay = inside(x, z, x0, x1, z0, -540);
+  const water = Math.max(inside(x, z, basin.x0, basin.x1, basin.z0, basin.z1), inside(x, z, channel.x0, channel.x1, z0 - 40, basin.z0 + 10));
+  return Math.min(quay, -water);
+}
+
 function rawCoast(x, z) {
   const bay = z - (-600 + 60 * Math.sin(x * 0.003));
   const atlantic = x - atlanticX(z);
   const quay = Math.min(z + 900, 1200 - x, x - 380);
-  return Math.max(Math.min(bay, atlantic), quay, northShore(x, z));
+  return Math.max(Math.min(bay, atlantic), quay, northShore(x, z), waterfront(x, z));
 }
 
 function tableMountain(x, z) {
@@ -140,6 +152,7 @@ function rawHeight(x, z) {
   const d = rawCoast(x, z);
   let h = d > 0 ? Math.min(d * 0.035, 60) : Math.max(d * 0.08, -25);
   if (d > 0 && x > 380 && x < 1200 && z < -560) h = Math.max(h, 2.5);
+  if (d > 0 && x > WATERFRONT.x0 && x < WATERFRONT.x1 && z > WATERFRONT.z0 && z < -540) h = z < -590 ? 2.5 : Math.max(h, 2.5);
   // The western suburbs and the mountains ease down over a long ramp to a flat seafront along the Atlantic,
   // a little tighter under Lion's Head at Clifton.
   const fromSea = x - atlanticBase(z);
@@ -182,6 +195,7 @@ export function atlanticLine(z) {
 
 function rawDistrict(x, z, h) {
   if (h > 900) return 'Table Mountain';
+  if (x > WATERFRONT.x0 && x < WATERFRONT.x1 && z > WATERFRONT.z0 - 60 && z < -585) return 'V&A Waterfront';
   if (z < -1300 && x < 1300) return 'Bloubergstrand';
   if (z < -900 && x >= 1300) return 'Milnerton';
   const fromSea = x - atlanticX(z);

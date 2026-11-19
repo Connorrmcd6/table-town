@@ -19,7 +19,7 @@ function createWater(scene) {
   scene.add(water);
 }
 
-function createPines(scene, colliders, { isSuburb, roads, parks }) {
+function createPines(scene, colliders, { isSuburb, roads, parks, keepClear }) {
   const spots = [];
   for (let tries = 0; tries < 9000 && spots.length < 1400; tries++) {
     const x = toWorld(-1600 + rand() * 2800);
@@ -30,7 +30,7 @@ function createPines(scene, colliders, { isSuburb, roads, parks }) {
     if (h < 20 * S || h > 520 * S) continue;
     const slope = Math.abs(heightAt(x + 4, z) - h) + Math.abs(heightAt(x, z + 4) - h);
     if (slope > 3.2) continue;
-    if (roads.clearance(x, z) < 6) continue;
+    if (roads.clearance(x, z) < 6 || keepClear(x, z)) continue;
     spots.push([x, h, z, 0.7 + rand() * 0.7]);
   }
   for (const p of parks) {
@@ -132,7 +132,7 @@ function createMinaret(scene, colliders) {
 }
 
 function createNoonGun(scene, colliders) {
-  const x = toWorld(-1150), z = toWorld(-150), h = heightAt(x, z);
+  const x = toWorld(-1205), z = toWorld(-110), h = heightAt(x, z);
   const g = new THREE.Group();
   const hut = new THREE.Mesh(new THREE.BoxGeometry(8, 4, 6), new THREE.MeshLambertMaterial({ color: '#e9e2d0' }));
   hut.position.set(0, 2, -10);
@@ -360,9 +360,9 @@ function createDisaPark(scene, colliders) {
   }
 }
 
-export function createLandmarks(scene, colliders, { isSuburb, roads, parks }) {
+export function createLandmarks(scene, colliders, { isSuburb, roads, parks, keepClear = () => false }) {
   createWater(scene);
-  createPines(scene, colliders, { isSuburb, roads, parks });
+  createPines(scene, colliders, { isSuburb, roads, parks, keepClear });
   createDisaPark(scene, colliders);
   createPalms(scene, colliders, roads);
   createHarbour(scene);

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { heightAt, CITY } from './heightmap.js';
+import { heightAt, CITY, DISA_PARK } from './heightmap.js';
 import { MeshBuilder } from './geometry.js';
 import { ROADS } from './city.js';
 
@@ -32,12 +32,13 @@ function createWater(scene) {
   scene.add(water);
 }
 
-function createPines(scene, colliders) {
+function createPines(scene, colliders, isSuburb) {
   const spots = [];
   for (let tries = 0; tries < 9000 && spots.length < 1400; tries++) {
     const x = -1600 + rand() * 2800;
     const z = -500 + rand() * 3100;
     if (x > CITY.minX - 20 && x < CITY.maxX + 20 && z > CITY.minZ - 20 && z < CITY.maxZ + 20) continue;
+    if (isSuburb(x, z) || Math.hypot(x - DISA_PARK.x, z - DISA_PARK.z) < 90) continue;
     const h = heightAt(x, z);
     if (h < 20 || h > 520) continue;
     const slope = Math.abs(heightAt(x + 4, z) - h) + Math.abs(heightAt(x, z + 4) - h);
@@ -214,9 +215,59 @@ function createTablecloth(scene) {
   };
 }
 
-export function createLandmarks(scene, colliders) {
+function disaTexture() {
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 64;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#f3f1ec';
+  ctx.fillRect(0, 0, 64, 64);
+  ctx.fillStyle = '#4a5560';
+  ctx.fillRect(0, 22, 64, 26);
+  ctx.fillStyle = '#e6e3dc';
+  ctx.fillRect(0, 44, 64, 6);
+  ctx.fillStyle = '#d9d6cf';
+  for (let x = 0; x < 64; x += 16) ctx.fillRect(x, 22, 2, 22);
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function createDisaPark(scene, colliders) {
+  const floors = 18, floorH = 3.1, radius = 13;
+  const tex = disaTexture();
+  tex.repeat.set(Math.round((Math.PI * 2 * radius) / 4), floors);
+  const wall = new THREE.MeshLambertMaterial({ map: tex });
+  const roof = new THREE.MeshLambertMaterial({ color: '#8d9399' });
+  const plinth = new THREE.MeshLambertMaterial({ color: '#cfc9bd' });
+  const spots = [[-50, 12], [0, -6], [50, 14]];
+  for (const [ox, oz] of spots) {
+    const x = DISA_PARK.x + ox, z = DISA_PARK.z + oz;
+    let min = Infinity;
+    for (let a = 0; a < 8; a++) min = Math.min(min, heightAt(x + Math.cos(a) * radius, z + Math.sin(a) * radius));
+    const g = new THREE.Group();
+    const h = floors * floorH;
+    const tower = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, h, 28, 1, true), wall);
+    tower.position.y = h / 2 + 3;
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(radius - 1.5, radius - 1.5, 6, 20), plinth);
+    base.position.y = 1;
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(radius + 0.6, radius + 0.6, 1.2, 28), roof);
+    cap.position.y = h + 3.6;
+    const plant = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.5, 3, 12), roof);
+    plant.position.y = h + 5.5;
+    g.add(tower, base, cap, plant);
+    g.position.set(x, min - 1, z);
+    g.traverse((o) => { o.castShadow = true; o.receiveShadow = true; });
+    scene.add(g);
+    colliders.push({ minX: x - radius * 0.8, maxX: x + radius * 0.8, minZ: z - radius * 0.8, maxZ: z + radius * 0.8 });
+  }
+}
+
+export function createLandmarks(scene, colliders, isSuburb = () => false) {
   createWater(scene);
-  createPines(scene, colliders);
+  createPines(scene, colliders, isSuburb);
+  createDisaPark(scene, colliders);
   createPalms(scene, colliders);
   createHarbour(scene);
   createMinaret(scene, colliders);

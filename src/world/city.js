@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { heightAt } from './heightmap.js';
 import { MeshBuilder, FACE } from './geometry.js';
+import { addSuburbHouse, fillPerimeter } from './houses.js';
+
+const inset = (r, d) => ({ x0: r.x0 + d, x1: r.x1 - d, z0: r.z0 + d, z1: r.z1 - d });
 import {
   asphaltTexture, cobbleTexture, sidewalkTexture, officeTextures, houseFacadeTexture,
 } from './textures.js';
@@ -33,13 +36,24 @@ function addRoad(points, width, surface, lift) {
   ROADS.push({ points, width, surface, lift });
 }
 
+export const BOKAAP = { minX: -320, maxX: -100, minZ: -380, maxZ: 20 };
+const inBoKaap = (x, z) => x >= BOKAAP.minX && x <= BOKAAP.maxX && z >= BOKAAP.minZ && z <= BOKAAP.maxZ;
+
 for (const x of GRID_X) {
-  const bokaap = x < BOKAAP_EDGE;
   const zMin = [0, 200, 400].includes(x) ? -560 : GRID_Z[0];
-  addRoad([[x, zMin], [x, GRID_Z[GRID_Z.length - 1]]], roadWidthAtX(x), bokaap ? 'cobble' : 'asphalt', 0.15);
+  const zMax = GRID_Z[GRID_Z.length - 1];
+  const w = roadWidthAtX(x);
+  if (x >= BOKAAP.minX && x < BOKAAP.maxX) {
+    addRoad([[x, zMin], [x, BOKAAP.minZ]], w, 'asphalt', 0.15);
+    addRoad([[x, BOKAAP.minZ], [x, BOKAAP.maxZ]], w, 'cobble', 0.15);
+    addRoad([[x, BOKAAP.maxZ], [x, zMax]], w, 'asphalt', 0.15);
+  } else addRoad([[x, zMin], [x, zMax]], w, 'asphalt', 0.15);
 }
 for (const z of GRID_Z) {
-  addRoad([[GRID_X[0], z], [BOKAAP_EDGE, z]], BOKAAP_ROAD_W, 'cobble', 0.17);
+  if (z >= BOKAAP.minZ && z <= BOKAAP.maxZ) {
+    addRoad([[GRID_X[0], z], [BOKAAP.minX, z]], BOKAAP_ROAD_W, 'asphalt', 0.17);
+    addRoad([[BOKAAP.minX, z], [BOKAAP_EDGE, z]], BOKAAP_ROAD_W, 'cobble', 0.17);
+  } else addRoad([[GRID_X[0], z], [BOKAAP_EDGE, z]], BOKAAP_ROAD_W, 'asphalt', 0.17);
   addRoad([[BOKAAP_EDGE, z], [GRID_X[GRID_X.length - 1], z]], CBD_ROAD_W, 'asphalt', 0.17);
 }
 addRoad([[-700, -560], [-300, -575], [200, -560], [700, -575], [1250, -560]], 18, 'asphalt', 0.2);
@@ -63,13 +77,15 @@ export function blockRects() {
       const zw = GRID_X[i] < BOKAAP_EDGE ? BOKAAP_ROAD_W : CBD_ROAD_W;
       const z0 = GRID_Z[j] + zw / 2;
       const z1 = GRID_Z[j + 1] - zw / 2;
-      rects.push({ x0, x1, z0, z1, bokaap: GRID_X[i] < BOKAAP_EDGE, park: PARK_BLOCKS.has(`${i},${j}`), i, j });
+      const west = GRID_X[i] < BOKAAP_EDGE;
+      const bokaap = west && inBoKaap((x0 + x1) / 2, (z0 + z1) / 2);
+      rects.push({ x0, x1, z0, z1, bokaap, suburb: west && !bokaap, park: PARK_BLOCKS.has(`${i},${j}`), i, j });
     }
   }
   return rects;
 }
 
-function buildRoads(builder, road) {
+export function buildRoads(builder, road) {
   const step = 4;
   const samples = [];
   const pts = road.points;
@@ -234,6 +250,7 @@ export function createCity(scene) {
   const sidewalk = new MeshBuilder();
   const park = new MeshBuilder();
   const houses = new MeshBuilder();
+  const roofs = new MeshBuilder();
   const offices = new MeshBuilder();
   const colliders = [];
 
@@ -243,6 +260,7 @@ export function createCity(scene) {
     buildSidewalk(r.park ? park : sidewalk, r);
     if (r.park) continue;
     if (r.bokaap) addBoKaapBlock(houses, colliders, r);
+    else if (r.suburb) fillPerimeter(inset(r, 2), rand, (cx, cz, w, d, f) => addSuburbHouse(houses, roofs, colliders, rand, cx, cz, w, d, f));
     else addCbdBlock(offices, colliders, r);
   }
 
@@ -269,6 +287,7 @@ export function createCity(scene) {
   add(sidewalk, mats.sidewalk, false);
   add(park, mats.park, false);
   add(houses, mats.houses, true);
+  add(roofs, new THREE.MeshLambertMaterial({ vertexColors: true }), true);
   add(offices, mats.offices, true);
 
   return {

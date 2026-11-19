@@ -17,7 +17,7 @@ const CLIFF = new THREE.Color('#b8a088');
 const SEABED = new THREE.Color('#6f7f6a');
 
 export function createTerrain() {
-  const xs = axisLines(-9000, 9000, -1500, 1100, 8, 150);
+  const xs = axisLines(-9000, 9000, -1700, 1700, 8, 150);
   const zs = axisLines(-9000, 9000, -950, 2700, 8, 150);
   const nx = xs.length, nz = zs.length;
   const pos = new Float32Array(nx * nz * 3);

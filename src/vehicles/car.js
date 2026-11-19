@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { heightAt } from '../world/heightmap.js';
+import { setBrakeLights } from './models.js';
 
 const G = 9.8;
 
@@ -44,6 +45,7 @@ export class Car {
     let vF = this.vel.dot(f);
     let vR = this.vel.dot(r);
     const maxSpeed = spec.maxSpeed * boost;
+    setBrakeLights(this.model, (input.brake && vF > 0.5) || (input.throttle && vF < -0.5) || (input.handbrake && Math.abs(vF) > 0.5));
 
     if (input.throttle) {
       if (vF < -0.5) vF += 18 * dt;
@@ -54,7 +56,7 @@ export class Car {
       else vF -= spec.accel * 0.6 * Math.max(0, 1 + vF / 9) * dt;
     }
     if (!input.throttle && !input.brake) vF -= Math.sign(vF) * Math.min(Math.abs(vF), 1.6 * dt);
-    vF -= vF * Math.abs(vF) * 0.0012 * dt * 10;
+    vF -= vF * Math.abs(vF) * 0.0015 * dt;
 
     const ahead = heightAt(this.pos.x + f.x * 1.5, this.pos.z + f.y * 1.5);
     const behind = heightAt(this.pos.x - f.x * 1.5, this.pos.z - f.y * 1.5);

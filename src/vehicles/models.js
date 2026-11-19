@@ -125,10 +125,30 @@ function plates(group, rnd, y, front, back) {
   group.add(f, b);
 }
 
-function lamps(group, width, y, front, back, size = [0.3, 0.16]) {
+const BRAKE_OFF = { color: new THREE.Color('#8a1414'), emissive: new THREE.Color('#2a0000') };
+const BRAKE_ON = { color: new THREE.Color('#ff4a3a'), emissive: new THREE.Color('#ff1a0a') };
+
+function brakeMaterial() {
+  return new THREE.MeshLambertMaterial({ color: BRAKE_OFF.color, emissive: BRAKE_OFF.emissive });
+}
+
+function tail(group, brake, w, h, x, y, z) {
+  const m = addMesh(group, new THREE.BoxGeometry(w, h, 0.05), brake);
+  m.position.set(x, y, z);
+}
+
+export function setBrakeLights(model, on) {
+  if (model.braking === on) return;
+  model.braking = on;
+  const s = on ? BRAKE_ON : BRAKE_OFF;
+  model.brake.color.copy(s.color);
+  model.brake.emissive.copy(s.emissive);
+}
+
+function lamps(group, brake, width, y, front, back, size = [0.3, 0.16]) {
   for (const side of [-1, 1]) {
     box(group, size[0], size[1], 0.05, side * (width / 2 - size[0] / 2 - 0.08), y, front, '#fff3cf', '#fff1c0');
-    box(group, size[0] * 0.8, size[1], 0.05, side * (width / 2 - size[0] * 0.4 - 0.06), y, back, '#b01c1c', '#5a0000');
+    tail(group, brake, size[0] * 0.8, size[1], side * (width / 2 - size[0] * 0.4 - 0.06), y, back);
   }
 }
 
@@ -145,6 +165,7 @@ function pillars(group, width, zs, y0, y1, color) {
 
 function minibus(rnd, livery) {
   const g = new THREE.Group();
+  const brake = brakeMaterial();
   const W = 1.9, L = 5.3, r = 0.36;
   const paint = '#f2f2ee';
   const shape = bodyShape({
@@ -164,15 +185,17 @@ function minibus(rnd, livery) {
   box(g, W + 0.04, 0.26, 0.16, 0, 0.62, 2.68, '#3a3d40');
   box(g, W + 0.04, 0.26, 0.16, 0, 0.62, -2.66, '#3a3d40');
   box(g, 0.95, 0.22, 0.04, 0, 1.02, 2.66, '#222');
-  lamps(g, W, 1.0, 2.66, -2.66, [0.32, 0.2]);
+  lamps(g, brake, W, 1.0, 2.66, -2.66, [0.32, 0.2]);
+  tail(g, brake, 0.4, 0.06, 0, 2.2, -2.66);
   mirrors(g, W, 1.75, 1.95, '#2a2a2a');
   plates(g, rnd, 0.62, 2.77, -2.75);
   const w = wheels(g, W, r, [1.55, -1.55]);
-  return { group: g, wheels: w, spec: { length: L, width: W, wheelbase: 3.1, maxSpeed: 36, accel: 7.5, radius: r, mass: 1.6 } };
+  return { group: g, wheels: w, brake, spec: { length: L, width: W, wheelbase: 3.1, maxSpeed: 44, accel: 9, radius: r, mass: 1.6 } };
 }
 
 function hatch(rnd, color) {
   const g = new THREE.Group();
+  const brake = brakeMaterial();
   const W = 1.62, L = 3.82, r = 0.29;
   const shape = bodyShape({
     rearZ: -1.9, frontZ: 1.9, sill: 0.3,
@@ -193,16 +216,17 @@ function hatch(rnd, color) {
     hl.rotation.x = Math.PI / 2;
     hl.position.set(side * 0.58, 0.72, 1.94);
   }
-  box(g, 0.24, 0.14, 0.05, -0.6, 0.72, -1.94, '#b01c1c', '#5a0000');
-  box(g, 0.24, 0.14, 0.05, 0.6, 0.72, -1.94, '#b01c1c', '#5a0000');
+  tail(g, brake, 0.24, 0.14, -0.6, 0.72, -1.94);
+  tail(g, brake, 0.24, 0.14, 0.6, 0.72, -1.94);
   mirrors(g, W, 1.02, 0.65, '#222');
   plates(g, rnd, 0.42, 2.03, -2.03);
   const w = wheels(g, W, r, [1.2, -1.2], 0.2);
-  return { group: g, wheels: w, spec: { length: L, width: W, wheelbase: 2.4, maxSpeed: 40, accel: 8.5, radius: r, mass: 1 } };
+  return { group: g, wheels: w, brake, spec: { length: L, width: W, wheelbase: 2.4, maxSpeed: 46, accel: 10, radius: r, mass: 1 } };
 }
 
 function bakkie(rnd, color, police = false) {
   const g = new THREE.Group();
+  const brake = brakeMaterial();
   const W = 1.8, L = 5.0, r = 0.37;
   const shape = bodyShape({
     rearZ: -2.5, frontZ: 2.48, sill: 0.42,
@@ -234,11 +258,11 @@ function bakkie(rnd, color, police = false) {
   box(g, W + 0.04, 0.2, 0.16, 0, 0.58, 2.55, '#9a9a9a');
   box(g, W + 0.04, 0.2, 0.16, 0, 0.58, -2.55, '#3a3a3a');
   box(g, 1.0, 0.24, 0.04, 0, 0.9, 2.5, '#1e1e1e');
-  lamps(g, W, 0.9, 2.5, -2.53, [0.3, 0.18]);
+  lamps(g, brake, W, 0.9, 2.5, -2.53, [0.3, 0.18]);
   mirrors(g, W, 1.32, 1.05, '#222');
   plates(g, rnd, 0.58, 2.64, -2.64);
   const w = wheels(g, W, r, [1.55, -1.5], 0.28, police ? '#d0d0d0' : '#8f8f8f');
-  return { group: g, wheels: w, spec: { length: L, width: W, wheelbase: 3.1, maxSpeed: 38, accel: 8, radius: r, mass: 1.4 } };
+  return { group: g, wheels: w, brake, spec: { length: L, width: W, wheelbase: 3.1, maxSpeed: 45, accel: 9.5, radius: r, mass: 1.4 } };
 }
 
 const GOLF_COLOURS = ['#c0392b', '#f1c40f', '#2e86de', '#27ae60', '#ecf0f1', '#8e44ad', '#e67e22', '#34495e'];

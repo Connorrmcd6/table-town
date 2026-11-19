@@ -3,6 +3,7 @@ import { createTerrain } from './world/terrain.js';
 import { createSky, TIME_ORDER } from './world/sky.js';
 import { createCity } from './world/city.js';
 import { createLandmarks } from './world/landmarks.js';
+import { createSuburbs } from './world/suburbs.js';
 import { districtAt, heightAt } from './world/heightmap.js';
 import { ColliderGrid } from './collision.js';
 import { playerTaxi } from './vehicles/models.js';
@@ -41,13 +42,14 @@ function build() {
   const sky = createSky(scene);
   scene.add(createTerrain());
   const city = createCity(scene);
-  const landmarks = createLandmarks(scene, city.colliders);
+  const suburbs = createSuburbs(scene, city.colliders);
+  const landmarks = createLandmarks(scene, city.colliders, suburbs.isSuburb);
   const colliders = new ColliderGrid(city.colliders);
   const taxiModel = playerTaxi();
   scene.add(taxiModel.group);
   const player = new Car(taxiModel, START.x, START.z, START.heading);
   const traffic = createTraffic(scene);
-  return { sky, city, landmarks, colliders, player, traffic };
+  return { sky, city, suburbs, landmarks, colliders, player, traffic };
 }
 
 let world;
@@ -65,8 +67,10 @@ const state = {
 };
 
 function applyLighting() {
-  const { sky, city } = world;
-  city.setWindowGlow(state.loadshedding ? 0 : sky.state.windows);
+  const { sky, city, suburbs } = world;
+  const glow = state.loadshedding ? 0 : sky.state.windows;
+  city.setWindowGlow(glow);
+  suburbs.setWindowGlow(glow);
 }
 
 function applyCheat(cheat) {

@@ -87,19 +87,25 @@ export function heightAt(x, z) {
 }
 
 export const SEA_LEVEL = 0;
+export const DISA_PARK = { x: 760, z: 950 };
 
 export function districtAt(x, z, h) {
   if (h > 900) return 'Table Mountain';
   if (Math.hypot(x + 1500, z - 1100) < 650) return "Lion's Head";
   if (Math.hypot(x + 1150, z + 150) < 700 && h > 120) return 'Signal Hill';
   if (Math.hypot(x + 650, z - 1000) < 300) return 'Kloof Nek';
-  if (x > 380 && z < -560) return 'Duncan Dock';
+  if (Math.hypot(x - DISA_PARK.x, z - DISA_PARK.z) < 140) return 'Disa Park';
+  if (x > 380 && x < 1200 && z < -560) return 'Duncan Dock';
   if (h > 250 && z > 1500) return 'Tafelberg Road';
-  if (z < -500 && x >= -470) return 'Foreshore';
-  if (x < -100 && x >= -470 && z < 230) return 'Bo-Kaap';
+  if (z < -500 && x >= -470 && x < 1200) return 'Foreshore';
+  if (x >= -330 && x <= -95 && z >= -390 && z <= 30) return 'Bo-Kaap';
+  if (x >= -470 && x < -95 && z < -390) return 'De Waterkant';
   if (x >= -100 && x <= 510 && z < 230) return 'City Bowl';
-  if (z >= 230 && z < 1500 && x < 300) return 'Tamboerskloof';
-  if (z >= 230 && z < 1500) return 'Gardens';
-  if (x < -1700) return 'Sea Point';
-  return 'Table Town';
+  if (x < -1300) return 'Sea Point';
+  if (x < -470 && z < 300) return 'Green Point';
+  if (x > 510 && z < 400) return 'Woodstock';
+  if (x > 500) return 'Vredehoek';
+  if (x < -100) return 'Tamboerskloof';
+  if (x < 250) return 'Gardens';
+  return 'Oranjezicht';
 }

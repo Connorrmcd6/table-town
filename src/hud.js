@@ -55,6 +55,12 @@ export function createHud() {
     rctx.fillRect(-4000, -4600, 8000, 4000);
     rctx.lineCap = 'round';
     for (const road of ROADS) {
+      if (!road.bbox) {
+        const xs = road.points.map((p) => p[0]), zs = road.points.map((p) => p[1]);
+        road.bbox = [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)];
+      }
+      const [bx0, bx1, bz0, bz1] = road.bbox;
+      if (bx1 < player.pos.x - 300 || bx0 > player.pos.x + 300 || bz1 < player.pos.z - 300 || bz0 > player.pos.z + 300) continue;
       rctx.strokeStyle = road.surface === 'cobble' ? '#c9b48a' : '#d6d6d6';
       rctx.lineWidth = road.width;
       rctx.beginPath();

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { heightAt } from '../world/heightmap.js';
 import { GRID_X, GRID_Z } from '../world/city.js';
-import { makeVehicle } from './models.js';
+import { makeVehicle, setBrakeLights } from './models.js';
 
 const LANE = 2.8;
 const STOP_BACK = 9;
@@ -91,6 +91,7 @@ class AICar {
       const side = Math.abs(ox * fz - oz * fx);
       if (along > 0 && along < 14 && side < 2.4) limit = Math.min(limit, Math.max(0, (along - 6) * 1.2));
     }
+    setBrakeLights(this.model, limit < this.speed - 0.5 || (this.speed < 0.5 && limit < 0.5));
     this.speed += Math.max(-12 * dt, Math.min(4 * dt, limit - this.speed));
     this.pos.x += fx * this.speed * dt + this.knock.x * dt;
     this.pos.z += fz * this.speed * dt + this.knock.y * dt;

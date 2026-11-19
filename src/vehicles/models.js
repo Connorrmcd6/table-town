@@ -346,6 +346,27 @@ function ranger(rnd) {
   return { ...model, wheels: w, spec: { length: 5.38, width: 2.03, wheelbase, maxSpeed: 100, accel: 15, drag: 0.0004, radius, mass: 1.6, steerScale: 0.9 } };
 }
 
+function focusPolice() {
+  const g = new THREE.Group();
+  const brake = brakeMaterial();
+  const model = optimize({ group: g, brake });
+  const { wheels: w, radius, wheelbase, siren } = gltfBody('focus', g, { brake });
+  siren[0].material.color.set('#3a0505');
+  siren[1].material.color.set('#0a0f3a');
+  return { ...model, wheels: w, siren, spec: { length: 4.36, width: 1.82, wheelbase, maxSpeed: 45, accel: 10, radius, mass: 1.2 } };
+}
+
+function ducati(rnd, [paint]) {
+  const g = new THREE.Group();
+  const brake = brakeMaterial();
+  const model = optimize({ group: g, brake });
+  const { wheels: w, radius, wheelbase } = gltfBody('ducati', g, { paint: mat('paint', paint), brake });
+  return {
+    ...model, wheels: w,
+    spec: { length: 2.1, width: 0.8, wheelbase, maxSpeed: 100, accel: 15, drag: 0.00042, radius, mass: 0.45, bike: true, steerScale: 0.5, seat: { y: 0.97, z: -0.42, lean: 0.55 } },
+  };
+}
+
 function sixty60(rnd) {
   const g = new THREE.Group();
   const brake = brakeMaterial();
@@ -589,9 +610,9 @@ export function makeVehicle(type, rnd = Math.random, opts = { rider: true }) {
   if (type === 'taxi') return { type, ...taxiBody(rnd, p(TAXI_LIVERIES)) };
   if (type === 'golf') return gltfReady('golf') ? { type, ...golfGti(rnd, p(GOLF_COLOURS)) } : optimize({ type, ...hatch(rnd, p(GOLF_COLOURS)) });
   if (type === 'bakkie') return optimize({ type, ...bakkie(rnd, p(BAKKIE_COLOURS)) });
-  if (type === 'police') return addSiren(optimize({ type, ...bakkie(rnd, '#f4f4f0', true) }));
+  if (type === 'police') return gltfReady('focus') ? { type, ...focusPolice() } : addSiren(optimize({ type, ...bakkie(rnd, '#f4f4f0', true) }));
   if (type === 'scooter') return maybeRider(gltfReady('sixty60') ? { type, ...sixty60(rnd) } : optimize({ type, ...scooter(rnd) }), rnd, opts);
-  if (type === 'superbike') return maybeRider(optimize({ type, ...superbike(rnd, p(BIKE_LIVERIES)) }), rnd, opts);
+  if (type === 'superbike') return maybeRider(gltfReady('ducati') ? { type, ...ducati(rnd, p(BIKE_LIVERIES)) } : optimize({ type, ...superbike(rnd, p(BIKE_LIVERIES)) }), rnd, opts);
   if (type === 'sports') return gltfReady('ranger') ? { type, ...ranger(rnd) } : optimize({ type, ...sportsCar(rnd, p(SPORTS_COLOURS)) });
   throw new Error(`unknown vehicle ${type}`);
 }

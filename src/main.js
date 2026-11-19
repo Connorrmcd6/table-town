@@ -30,7 +30,7 @@ const START_CLOCK = 16 * 60 + 30;
 const SUNDOWNER_STOPS = [6 * 60 + 15, 12 * 60, 17 * 60 + 30, 21 * 60];
 const MAX_PARKED = 6;
 const ENTER_RANGE = 2.2;
-const VEHICLE_NAMES = { taxi: 'taxi', golf: 'Citi Golf', bakkie: 'bakkie', police: 'SAPS bakkie', scooter: 'Sixty60 bike', superbike: 'superbike', sports: 'Ranger Raptor' };
+const VEHICLE_NAMES = { taxi: 'taxi', golf: 'Citi Golf', bakkie: 'bakkie', police: 'police car', scooter: 'Sixty60 bike', superbike: 'Ducati', sports: 'Ranger Raptor' };
 const JACKED_LINES = ['Haai! Jou ma se...!', "Voetsek! That's my car!", 'Eish! Not again!', 'Hey bru! Bring it back!', 'Ag no man, I just washed it!'];
 const HIT_LINES = ['Eish!', 'Watch where you drive, bru!', 'Aikona!', 'Jirre!'];
 

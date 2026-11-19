@@ -4,7 +4,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const base = import.meta.env.BASE_URL;
 
-// Credits: Hiace by ROH3D, Golf GTI Mk1 by Ddiaz Design, Sixty60 bike by Caitlin Pillay, Ranger Raptor by TSB3DMODELS (all on Sketchfab).
+// Credits: Hiace by ROH3D, Golf GTI Mk1 by Ddiaz Design, Sixty60 bike by Caitlin Pillay, Ranger Raptor by TSB3DMODELS, Ducati V4R by IrfanMuaz, Ford Focus police car by David_Holiday (all on Sketchfab).
 // Untextured or near-solid materials are baked to vertex colours so each vehicle is only a handful of draw calls.
 const CONFIGS = {
   hiace: {
@@ -39,6 +39,29 @@ const CONFIGS = {
     seat: 'Seat',
     isWheel: (o) => /Rim|Tyre/.test(o.name + o.parent?.name),
   },
+  ducati: {
+    url: `${base}models/ducati.glb`,
+    length: 2.1,
+    rotateY: Math.PI / 2,
+    bike: true,
+    skip: [],
+    keepMaps: [],
+    glass: [],
+    paint: ['BaseColour', 'Vt_Liu_003'],
+    isWheel: (o) => o.material.name.startsWith('Material_001') || o.material.name === 'Vt_Liu_009',
+  },
+  focus: {
+    url: `${base}models/focus.glb`,
+    length: 4.36,
+    doubleSided: true,
+    rotateY: -Math.PI / 2,
+    skip: [],
+    keepMaps: ['material_79', 'material_82', 'material_114'],
+    glass: ['Color_007_6', 'glass4', 'detail_glass_cle2', 'Translucent_Glass_Gray_3'],
+    brake: ['detail_glass_red2'],
+    siren: ['material_122'],
+    isWheel: (o) => ['Tyre_Rubber', 'Dull_metal__Alloy_Mag', 'Chrome_Metal'].includes(o.material.name),
+  },
   ranger: {
     url: `${base}models/ranger.glb`,
     length: 5.38,
@@ -53,6 +76,7 @@ const CONFIGS = {
 
 const templates = new Map();
 const FLAT = new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 60, specular: 0x444444 });
+const FLAT_DOUBLE = new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 60, specular: 0x444444, side: THREE.DoubleSide });
 const GLASS = new THREE.MeshPhongMaterial({ color: '#141a20', transparent: true, opacity: 0.55, shininess: 110, specular: 0x9aa4b0, depthWrite: false });
 
 export const gltfReady = (name) => templates.has(name);
@@ -77,6 +101,7 @@ function flatColour(material, cfg, cache) {
 
 function bake(mesh, toLocal, attrs, colour) {
   const src = mesh.geometry;
+  if (!src.getAttribute('normal')) src.computeVertexNormals();
   const g = new THREE.BufferGeometry();
   for (const a of attrs) g.setAttribute(a, src.getAttribute(a));
   g.setIndex(src.index ?? [...Array(src.getAttribute('position').count).keys()]);
@@ -92,14 +117,14 @@ function bake(mesh, toLocal, attrs, colour) {
   return out;
 }
 
-// Some models pack all four tyres into one mesh, so assign each triangle to the wheel whose quadrant it sits in.
-function splitByWheel(geo, bike, centre) {
+// Groups triangles by keyOf(x, z) of their centroid (relative to the model centre), e.g. one wheel per quadrant.
+function splitTriangles(geo, centre, keyOf) {
   const pos = geo.getAttribute('position');
   const groups = new Map();
   for (let t = 0; t < pos.count; t += 3) {
-    const x = pos.getX(t) + pos.getX(t + 1) + pos.getX(t + 2) - 3 * centre.x;
-    const z = pos.getZ(t) + pos.getZ(t + 1) + pos.getZ(t + 2) - 3 * centre.z;
-    const key = bike ? `${z > 0}` : `${x > 0}${z > 0}`;
+    const x = (pos.getX(t) + pos.getX(t + 1) + pos.getX(t + 2)) / 3 - centre.x;
+    const z = (pos.getZ(t) + pos.getZ(t + 1) + pos.getZ(t + 2)) / 3 - centre.z;
+    const key = keyOf(x, z);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(t);
   }
@@ -144,6 +169,9 @@ async function load(name) {
   const centre = box.getCenter(new THREE.Vector3()).multiplyScalar(scale);
   const colours = new Map();
   const textured = new Map();
+  // SketchUp exports often wind faces inconsistently and rely on double-sided rendering.
+  const side = cfg.doubleSided ? THREE.DoubleSide : THREE.FrontSide;
+  const flat = cfg.doubleSided ? FLAT_DOUBLE : FLAT;
   const body = new Buckets();
   const wheelParts = new Map();
   let seat = null;
@@ -155,12 +183,13 @@ async function load(name) {
     const attrs = keepMap ? ['position', 'normal', 'uv'] : ['position', 'normal'];
     const geo = bake(o, toLocal, attrs, keepMap ? null : flatColour(m, cfg, colours));
     const texturedMaterial = () => {
-      if (!textured.has(m.map)) textured.set(m.map, new THREE.MeshPhongMaterial({ map: m.map, shininess: 70, specular: 0x555555 }));
+      if (!textured.has(m.map)) textured.set(m.map, new THREE.MeshPhongMaterial({ map: m.map, shininess: 70, specular: 0x555555, side }));
       return textured.get(m.map);
     };
     if (cfg.isWheel(o)) {
-      const material = keepMap ? texturedMaterial() : FLAT;
-      for (const [key, part] of splitByWheel(geo, cfg.bike, centre)) {
+      const material = keepMap ? texturedMaterial() : flat;
+      // Some models pack all four tyres into one mesh, so each triangle goes to the wheel in its quadrant.
+      for (const [key, part] of splitTriangles(geo, centre, (x, z) => (cfg.bike ? `${z > 0}` : `${x > 0}${z > 0}`))) {
         if (!wheelParts.has(key)) wheelParts.set(key, new Buckets());
         wheelParts.get(key).add(keepMap ? m.map.uuid : 'flat', material, part);
       }
@@ -173,8 +202,9 @@ async function load(name) {
     if (cfg.glass.includes(m.name)) body.add('glass', GLASS, geo);
     else if (cfg.paint?.includes(m.name)) body.add('paint', null, geo);
     else if (cfg.brake?.includes(m.name)) body.add('brake', null, geo);
+    else if (cfg.siren?.includes(m.name)) for (const [key, part] of splitTriangles(geo, centre, (x) => (x < 0 ? 'sirenL' : 'sirenR'))) body.add(key, null, part);
     else if (keepMap) body.add(m.map.uuid, texturedMaterial(), geo);
-    else body.add('flat', FLAT, geo);
+    else body.add('flat', flat, geo);
   });
   const parts = body.build();
   const wheels = [...wheelParts.values()].map((b) => {
@@ -189,7 +219,7 @@ async function load(name) {
   const mid = (Math.max(...axles) + Math.min(...axles)) / 2;
   const radius = wheels.length ? Math.max(...wheels.map((w) => w.radius)) : cfg.radius;
   const ground = Math.min(...parts.map((p) => p.geo.boundingBox.min.y), ...wheels.map((w) => w.center.y - radius));
-  const shift = new THREE.Vector3(0, -ground, -mid);
+  const shift = new THREE.Vector3(-centre.x, -ground, -mid);
   for (const p of parts) p.geo.translate(shift.x, shift.y, shift.z);
   for (const w of wheels) {
     w.center.add(shift);
@@ -212,9 +242,12 @@ export function loadVehicleModels() {
 // Adds the model's meshes to `group`; `paint` and `brake` are per-vehicle materials.
 export function gltfBody(name, group, { paint, brake } = {}) {
   const t = templates.get(name);
+  const sirens = {};
   for (const { key, geo, material } of t.parts) {
-    const m = new THREE.Mesh(geo, key === 'paint' ? paint : key === 'brake' ? brake : material);
-    m.castShadow = key !== 'glass';
+    const isSiren = key.startsWith('siren');
+    const m = new THREE.Mesh(geo, key === 'paint' ? paint : key === 'brake' ? brake : isSiren ? new THREE.MeshBasicMaterial() : material);
+    m.castShadow = key !== 'glass' && !isSiren;
+    if (isSiren) sirens[key] = m;
     group.add(m);
   }
   const out = { front: [], all: [] };
@@ -232,5 +265,5 @@ export function gltfBody(name, group, { paint, brake } = {}) {
     out.all.push(tyre);
     if (front) out.front.push(pivot);
   }
-  return { wheels: out, radius: t.radius, wheelbase: t.wheelbase, seat: t.seat };
+  return { wheels: out, radius: t.radius, wheelbase: t.wheelbase, seat: t.seat, siren: sirens.sirenL && [sirens.sirenL, sirens.sirenR] };
 }

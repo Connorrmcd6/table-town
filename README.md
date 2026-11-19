@@ -29,4 +29,7 @@ See [docs/PLAN.md](docs/PLAN.md) for the design decisions, content ideas and pha
 - [Checkers Sixty60 Bike](https://sketchfab.com/3d-models/checkers-sixty60-bike-4aabf2a85abd43f98fc4e5f2a5ae62f1) by Caitlin Pillay - CC-BY-4.0
 - [2019 Ford Ranger Raptor](https://sketchfab.com/3d-models/2019-ford-ranger-raptor-civil-cities-skylines-c2d4113e6acd401cb1999f81bb318325) by TSB3DMODELS - CC-BY-4.0
 
-The Golf and Sixty60 meshes are simplified with `npx gltf-transform weld`, `simplify`, `resize --width 512 --height 512` and `prune`.
+- [DucatiV4R](https://sketchfab.com/3d-models/ducativ4r-3f1067a86c4c4c3bbfddf61ec0232446) by IrfanMuaz - CC-BY-4.0
+- [Ford Focus British Police Car](https://sketchfab.com/3d-models/ford-focus-british-police-car-uk-9936a4c775f442549005a6cf83d1de21) by David_Holiday - CC-BY-4.0
+
+Heavy models are simplified with `node scripts/optimize-model.mjs <in.glb> <out.glb> [ratio] [error]`, then `npx gltf-transform resize` for textures.

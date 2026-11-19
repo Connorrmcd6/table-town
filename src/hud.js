@@ -8,6 +8,7 @@ export function createHud() {
   const street = $('street');
   const healthFill = $('healthfill'), wanted = $('wanted'), promptEl = $('prompt'), big = $('bigtext');
   const weaponEl = $('weapon'), crosshair = $('crosshair');
+  const carBar = $('carhealth'), carFill = $('carhealthfill');
   let lastWeapon = null;
   const stars = [...wanted.children];
   let lastStars = -1, lastPrompt = null;
@@ -46,8 +47,13 @@ export function createHud() {
     subtitleTimer = seconds;
   }
 
-  function status({ health, stars: n, seen }) {
+  function status({ health, stars: n, seen, car = null }) {
     healthFill.style.width = `${Math.max(0, health)}%`;
+    carBar.classList.toggle('show', car !== null);
+    if (car !== null) {
+      carFill.style.width = `${Math.max(0, car) * 100}%`;
+      carFill.style.background = car < 0.3 ? '#e8461e' : '#e8a21e';
+    }
     if (n !== lastStars) {
       stars.forEach((s, i) => s.classList.toggle('on', i < n));
       lastStars = n;

@@ -190,7 +190,9 @@ export function createPolice(scene, traffic) {
       c.slowT = Math.abs(c.car.speed) < 2.5 ? (c.slowT || 0) + dt : 0;
       // Close and stopped, or stuck in a back street: get out and finish it on foot.
       if (onFoot && !c.officers.length && ((d < 24 && c.slowT > 0) || (d < 70 && c.slowT > 2))) officers.deploy(c);
-      if (c.officers.some((o) => o.hp > 0)) {
+      if (c.car.wreck) {
+        c.car.update(dt, { throttle: false, brake: true, steer: 0, handbrake: true }, { colliders });
+      } else if (c.officers.some((o) => o.hp > 0)) {
         c.car.update(dt, { throttle: false, brake: true, steer: 0, handbrake: true }, { colliders });
       } else {
         aimFor(c, target, colliders);
@@ -198,7 +200,7 @@ export function createPolice(scene, traffic) {
       }
       if (playerVehicle) {
         const hit = collideCars(playerVehicle, c.car);
-        if (hit > 3) onRam(hit);
+        if (hit > 3) onRam(hit, c.car);
       }
       for (const other of chasers) if (other !== c) collideCars(c.car, other.car);
     }

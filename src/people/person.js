@@ -371,6 +371,23 @@ export function addPistol(p) {
   return muzzle;
 }
 
+// Dying: knees buckle, then a slumped fall onto the back with arms flung out; t is seconds since death.
+export function poseDead(p, t, side = 1) {
+  const buckle = Math.min(1, t / 0.35), fall = Math.min(1, Math.max(0, (t - 0.25) / 0.45));
+  const ease = fall * fall * (3 - 2 * fall);
+  p.kneeL.rotation.x = 1.2 * buckle * (1 - ease) + 0.3 * ease;
+  p.kneeR.rotation.x = 1.0 * buckle * (1 - ease) + 0.5 * ease;
+  p.legL.rotation.set(-0.6 * buckle * (1 - ease) - 0.2 * ease, 0, 0.15 * ease);
+  p.legR.rotation.set(-0.4 * buckle * (1 - ease) + 0.1 * ease, 0, -0.2 * ease);
+  p.torso.rotation.set(0.4 * buckle * (1 - ease), 0, side * 0.25 * ease);
+  p.armL.rotation.set(-0.3 * (1 - ease) - 0.4 * ease, 0, 1.2 * ease);
+  p.armR.rotation.set(-0.3 * (1 - ease) - 0.6 * ease, 0, -1.0 * ease);
+  p.elbowL.rotation.x = -0.4;
+  p.elbowR.rotation.x = -0.2;
+  p.body.rotation.set(-Math.PI / 2 * ease, 0, side * 0.2 * ease);
+  p.body.position.set(0, 0.15 * ease - 0.35 * buckle * (1 - ease), 0);
+}
+
 // Seated on a bike: thighs forward, knees bent, hands on the bars.
 export function poseRider(p, lean = 0.1) {
   p.legL.rotation.set(-1.45, 0, 0.12);

@@ -158,17 +158,73 @@ class AICar {
     if (wp.stopAt) this.waited = 0;
   }
 
+  // Shot at or spooked: 'flee' floors it along the route ignoring lights; 'ram' goes straight for the player on foot.
+  provoke(mode, seconds) {
+    if (this.panic?.mode === 'ram' && mode === 'flee') return;
+    this.panic = { mode, t: seconds };
+  }
+
+  ram(dt, env) {
+    const w = env.walker;
+    const dx = w.pos.x - this.pos.x, dz = w.pos.z - this.pos.z;
+    if (Math.hypot(dx, dz) < 3.5) {
+      // Got you (or nearly): keep going and get out of there.
+      this.panic = { mode: 'flee', t: 8 };
+      return;
+    }
+    let diff = Math.atan2(dx, dz) - this.heading;
+    diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+    const turn = Math.max(-2.4 * dt, Math.min(2.4 * dt, diff * 4 * dt));
+    this.heading += turn;
+    this.yawRate = dt > 0 ? turn / dt : 0;
+    const fx = Math.sin(this.heading), fz = Math.cos(this.heading);
+    // Never plough through a building to get you: bail out into a getaway instead.
+    if (env.grid?.contains(this.pos.x + fx * 4, this.pos.z + fz * 4, this.pos.y + 0.8)) {
+      this.speed *= 0.4;
+      this.panic = { mode: 'flee', t: 6 };
+      return;
+    }
+    const want = Math.abs(diff) > 1.2 ? 8 : Math.min(26, this.spec.maxSpeed * 0.7);
+    this.speed += Math.max(-12 * dt, Math.min(9 * dt, want - this.speed));
+    setBrakeLights(this.model, false);
+    this.pos.x += fx * this.speed * dt + this.knock.x * dt;
+    this.pos.z += fz * this.speed * dt + this.knock.y * dt;
+    this.knock.multiplyScalar(Math.exp(-3 * dt));
+    this.pos.y = heightAt(this.pos.x, this.pos.z);
+    this.sync(dt);
+  }
+
   update(dt, others, player, env) {
     if (this.frozen) return;
+    if (this.wreck) {
+      this.speed = Math.max(0, this.speed - 10 * dt);
+      const fx = Math.sin(this.heading), fz = Math.cos(this.heading);
+      this.pos.x += fx * this.speed * dt + this.knock.x * dt;
+      this.pos.z += fz * this.speed * dt + this.knock.y * dt;
+      this.knock.multiplyScalar(Math.exp(-3 * dt));
+      setBrakeLights(this.model, false);
+      this.sync(dt);
+      return;
+    }
+    if (this.panic) {
+      this.panic.t -= dt;
+      if (this.panic.t <= 0) this.panic = null;
+      else if (this.panic.mode === 'ram' && !env.walker) this.panic.mode = 'flee';
+    }
+    if (this.panic?.mode === 'ram') {
+      this.ram(dt, env);
+      return;
+    }
+    const fleeing = this.panic?.mode === 'flee';
     let target = this.waypoints[0];
     let dist = Math.hypot(target.x - this.pos.x, target.z - this.pos.z);
-    let held = this.mustWait(target, dist, env);
+    let held = !fleeing && this.mustWait(target, dist, env);
     for (let guard = 0; dist < 2.5 && !held && guard < 4; guard++) {
       this.passed(this.waypoints.shift(), env);
       if (this.waypoints.length < 2) this.planNext();
       target = this.waypoints[0];
       dist = Math.hypot(target.x - this.pos.x, target.z - this.pos.z);
-      held = this.mustWait(target, dist, env);
+      held = !fleeing && this.mustWait(target, dist, env);
     }
     if (held && this.speed < 0.5 && !this.holdFor(target, dist, env)) this.waited += dt;
     const dx = target.x - this.pos.x, dz = target.z - this.pos.z;
@@ -178,14 +234,17 @@ class AICar {
     this.heading += turn;
     this.yawRate = dt > 0 ? turn / dt : 0;
 
-    let limit = this.cruise * (Math.abs(diff) > 0.4 ? 0.45 : 1);
+    const cruise = fleeing ? Math.max(20, this.cruise * 2.2) : this.cruise;
+    let limit = cruise * (Math.abs(diff) > 0.4 ? (fleeing ? 0.6 : 0.45) : 1);
     if (held) limit = Math.min(limit, Math.max(0, (dist - 1.2) * 1.3));
-    if (env.signalsOff && target.stopAt?.signal && dist < 15) limit = Math.min(limit, 5);
+    if (!fleeing && env.signalsOff && target.stopAt?.signal && dist < 15) limit = Math.min(limit, 5);
     const fx = Math.sin(this.heading), fz = Math.cos(this.heading);
-    for (const o of others) this.yieldTo(o, fx, fz, (v) => { limit = Math.min(limit, v); });
-    this.yieldTo(player, fx, fz, (v) => { limit = Math.min(limit, v); });
+    if (!fleeing) {
+      for (const o of others) this.yieldTo(o, fx, fz, (v) => { limit = Math.min(limit, v); });
+      this.yieldTo(player, fx, fz, (v) => { limit = Math.min(limit, v); });
+    }
     setBrakeLights(this.model, limit < this.speed - 0.5 || (this.speed < 0.5 && limit < 0.5));
-    this.speed += Math.max(-12 * dt, Math.min(4 * dt, limit - this.speed));
+    this.speed += Math.max(-12 * dt, Math.min((fleeing ? 9 : 4) * dt, limit - this.speed));
     this.pos.x += fx * this.speed * dt + this.knock.x * dt;
     this.pos.z += fz * this.speed * dt + this.knock.y * dt;
     this.knock.multiplyScalar(Math.exp(-3 * dt));
@@ -194,7 +253,7 @@ class AICar {
   }
 
   yieldTo(o, fx, fz, cap) {
-    if (o === this) return;
+    if (!o || o === this) return;
     const ox = o.pos.x - this.pos.x, oz = o.pos.z - this.pos.z;
     if (Math.abs(ox) > 16 || Math.abs(oz) > 16) return;
     if (o.model?.type !== 'person' && Math.cos(o.heading - this.heading) < -0.5) return;
@@ -367,9 +426,15 @@ export function createTraffic(scene, colliders, edges, count = 80, roads = null)
     setFrozen(v) {
       for (const c of cars) c.frozen = v;
     },
-    update(dt, player, onImpact, { signalsOff = false, lights = 0, walker = null } = {}) {
+    // Gunfire nearby: some drivers floor it.
+    scare(x, z, r) {
+      for (const c of cars) {
+        if (!c.panic && Math.hypot(c.pos.x - x, c.pos.z - z) < r && Math.random() < 0.5) c.provoke('flee', 8 + Math.random() * 6);
+      }
+    },
+    update(dt, player, onImpact, { signalsOff = false, lights = 0, walker = null, grid = null } = {}) {
       time += dt;
-      const env = { time, signalsOff };
+      const env = { time, signalsOff, walker, grid };
       const focus = player || walker;
       for (const c of cars) {
         if (focus) c.nearPlayer = Math.abs(c.pos.x - focus.pos.x) < 90 && Math.abs(c.pos.z - focus.pos.z) < 90;

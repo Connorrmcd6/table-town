@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { heightAt } from '../world/heightmap.js';
-import { makePerson, animatePerson, knockDown, poseAirborne, poseRoll, poseClimb, poseVault, poseArms } from './person.js';
+import { makePerson, animatePerson, knockDown, poseAirborne, poseRoll, poseClimb, poseVault, poseArms, poseDead } from './person.js';
 import { vehicleCircles } from './pedestrians.js';
 
 const SPRINT = 8.5, AIM_WALK = 3.2;
@@ -69,6 +69,7 @@ export class Walker {
     this.roll = null;
     this.climb = null;
     this.riding = null;
+    this.dead = null;
     this.vy = 0;
     this.airborne = false;
     this.sync(0);
@@ -80,7 +81,16 @@ export class Walker {
   }
 
   get busy() {
-    return this.down > 0 || this.roll !== null || this.climb !== null;
+    return this.down > 0 || this.roll !== null || this.climb !== null || !!this.dead;
+  }
+
+  // Collapse and stay down; `push` slides the body a little as it falls.
+  die(push = null) {
+    this.roll = null;
+    this.climb = null;
+    this.down = 0;
+    this.dead = { t: 0, side: Math.random() < 0.5 ? -1 : 1 };
+    this.vel.copy(push || new THREE.Vector2()).multiplyScalar(push ? 1.5 : 0);
   }
 
   hit(dir, strength) {
@@ -193,7 +203,10 @@ export class Walker {
         this.fallFrom = this.pos.y;
       }
     }
-    if (this.roll) {
+    if (this.dead) {
+      this.dead.t += dt;
+      this.vel.multiplyScalar(Math.exp(-4 * dt));
+    } else if (this.roll) {
       const r = this.roll;
       r.t += dt;
       this.vel.multiplyScalar(Math.exp((r.t < r.dur ? -1.6 : -8) * dt));
@@ -295,7 +308,8 @@ export class Walker {
     const g = this.model.group;
     g.position.copy(this.pos);
     g.rotation.y = this.heading;
-    if (this.climb) (this.climb.vault ? poseVault : poseClimb)(this.model, Math.min(1, this.climb.t / this.climb.dur));
+    if (this.dead) poseDead(this.model, this.dead.t, this.dead.side);
+    else if (this.climb) (this.climb.vault ? poseVault : poseClimb)(this.model, Math.min(1, this.climb.t / this.climb.dur));
     else if (this.roll) poseRoll(this.model, this.roll.t, this.roll.dur, this.roll.spins, this.roll.recover);
     else if (this.down > 0) knockDown(this.model, Math.min(1, this.down * 2));
     else {

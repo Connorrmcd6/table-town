@@ -105,6 +105,7 @@ export function createWeapons(scene) {
       // Mild assist: only when you'd otherwise miss, nudge onto the chest of someone just off the crosshair.
       let assist = null, bestDot = AIM_ASSIST;
       for (const tg of targets) {
+        if (tg.kind === 'car' || tg.kind === 'copcar') continue;
         const chest = new THREE.Vector3(tg.pos.x, tg.pos.y + tg.height * 0.65, tg.pos.z);
         const to = chest.clone().sub(eye);
         const d = to.length();

@@ -40,6 +40,8 @@ export class Car {
   }
 
   update(dt, input, env) {
+    // A burning wreck has no engine: it just rolls to a stop.
+    if (this.wreck) input = { throttle: false, brake: false, steer: input.steer * 0.3, handbrake: true };
     const { spec } = this;
     const boost = env.boost || 1;
     const f = this.forward;

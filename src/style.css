@@ -11,6 +11,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1410; }
 
 #health { width: 170px; height: 14px; margin: 6px 0 0 auto; border: 2px solid #000; background: #3a0d12; }
 #healthfill { height: 100%; width: 100%; background: #d9324a; transition: width 0.2s; }
+#carhealth { width: 170px; height: 9px; margin: 4px 0 0 auto; border: 2px solid #000; background: #3a2a0d; display: none; }
+#carhealth.show { display: block; }
+#carhealthfill { height: 100%; width: 100%; background: #e8a21e; transition: width 0.2s; }
 #wanted { margin-top: 4px; font-size: 30px; letter-spacing: 2px; }
 #wanted span { color: transparent; -webkit-text-stroke: 1.5px rgba(255, 255, 255, 0.35); }
 #wanted span.on { color: #f4c430; -webkit-text-stroke: 1.5px #000; }

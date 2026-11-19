@@ -41,13 +41,22 @@ export function createOfficers(scene) {
     for (const o of [...list]) remove(o);
   }
 
-  function damage(o, amount, dir) {
+  // Bullets and fists make them flinch; heavy blows floor them for a moment; at zero health they stay down for good.
+  function damage(o, amount, dir, { knock = false } = {}) {
     if (o.hp <= 0) return false;
     o.hp -= amount;
-    o.state = 'down';
-    o.down = o.hp <= 0 ? Infinity : 1.2;
-    o.vel.set(dir.x, dir.y).multiplyScalar(o.hp <= 0 ? 5 : 3);
-    o.model.gun.visible = false;
+    if (o.hp <= 0) {
+      o.state = 'dead';
+      o.vel.set(dir.x, dir.y).multiplyScalar(4);
+      o.model.gun.visible = false;
+    } else if (knock) {
+      o.state = 'down';
+      o.down = 1.4;
+      o.vel.set(dir.x, dir.y).multiplyScalar(2.5);
+    } else {
+      o.flinch = 1;
+      o.vel.set(dir.x, dir.y).multiplyScalar(1.2);
+    }
     return true;
   }
 
@@ -83,17 +92,25 @@ export function createOfficers(scene) {
       const dx = target.x - o.pos.x, dz = target.z - o.pos.z, dist = Math.hypot(dx, dz);
       o.arms = null;
       o.grab = false;
-      if (o.state === 'down') {
+      if (o.state === 'down' || o.state === 'dead') {
         o.down -= dt;
         o.vel.multiplyScalar(Math.exp(-4 * dt));
         step(o, dt, colliders, vehicles);
-        knockDown(o.model, Math.min(1, o.down * 2));
-        if (o.down <= 0) {
+        knockDown(o.model, o.state === 'dead' ? 1 : Math.min(1, o.down * 2));
+        if (o.state === 'down' && o.down <= 0) {
           o.state = 'run';
-          o.model.gun.visible = true;
           knockDown(o.model, 0);
         }
         if (dist > 140) remove(o);
+        sync(o);
+        continue;
+      }
+      if (o.flinch > 0) {
+        o.flinch = Math.max(0, o.flinch - dt / 0.35);
+        o.vel.multiplyScalar(Math.exp(-6 * dt));
+        step(o, dt, colliders, vehicles);
+        animatePerson(o.model, dt, 0);
+        poseArms(o.model, { mode: 'flinch', k: 1 - o.flinch, side: 1 });
         sync(o);
         continue;
       }
@@ -159,7 +176,7 @@ export function createOfficers(scene) {
 
   // Lets bullets, fists and bumpers find officers: a standing capsule around each live one.
   function targets() {
-    return list.filter((o) => o.state !== 'down' || o.hp > 0);
+    return list.filter((o) => o.hp > 0);
   }
 
   return { list, deploy, remove, clear, damage, update, targets };

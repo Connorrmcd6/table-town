@@ -208,7 +208,7 @@ export function createPolice(scene, traffic) {
       onShoot,
     });
     for (const o of officers.list) {
-      if (o.state !== 'down' && Math.hypot(o.pos.x - target.x, o.pos.z - target.z) < SEE_RANGE && lineClear(colliders, o.pos.x, o.pos.z, target.x, target.z)) state.seen = true;
+      if (o.hp > 0 && o.state !== 'down' && Math.hypot(o.pos.x - target.x, o.pos.z - target.z) < SEE_RANGE && lineClear(colliders, o.pos.x, o.pos.z, target.x, target.z)) state.seen = true;
     }
     if (wanted && !state.seen) state.heat = Math.max(STAR_HEAT[0] * 0.5, state.heat - dt * 9);
     if (wanted && !state.seen && state.heat <= STAR_HEAT[0] * 0.5 + 0.01) state.heat = 0;

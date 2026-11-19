@@ -37,6 +37,11 @@ export class ChaseCamera {
     });
   }
 
+  // Downward aim angle while aiming; level at rest.
+  get aimPitch() {
+    return Math.max(-0.5, Math.min(0.6, this.lookPitch * 0.7 + 0.03));
+  }
+
   cycle() {
     this.mode = (this.mode + 1) % MODES.length;
   }
@@ -79,16 +84,22 @@ export class ChaseCamera {
       );
     } else {
       const dist = m.dist + Math.min(vel * 0.08, 4);
-      const flat = dist * Math.cos(this.lookPitch * 0.8);
+      const flat = dist * Math.cos((m.aim ? 0.15 : this.lookPitch) * 0.8);
       // Over-the-shoulder offset to the right (used while aiming).
       const sx = -fz * (m.side || 0), sz = fx * (m.side || 0);
       const target = new THREE.Vector3(car.pos.x - fx * flat + sx, 0, car.pos.z - fz * flat + sz);
-      target.y = Math.max(carY + m.height + Math.sin(this.lookPitch * 0.8) * dist, heightAt(target.x, target.z) + 1.5);
+      target.y = Math.max(carY + m.height + (m.aim ? 0 : Math.sin(this.lookPitch * 0.8) * dist), heightAt(target.x, target.z) + 1.5);
       if (snap) this.pos.copy(target);
       else this.pos.lerp(target, Math.min(1, dt * (this.idle < 0.3 ? 14 : 6)));
       this.camera.position.copy(this.pos);
-      const ahead = 4 * Math.min(1, Math.max(0, this.idle - RECENTER_AFTER));
-      this.camera.lookAt(car.pos.x + fx * ahead + sx, carY + m.look, car.pos.z + fz * ahead + sz);
+      if (m.aim) {
+        // Aiming looks along the crosshair, not at the player, so mouse pitch alone sets how high you shoot.
+        const p = this.aimPitch;
+        this.camera.lookAt(this.pos.x + fx * Math.cos(p) * 50, this.pos.y - Math.sin(p) * 50, this.pos.z + fz * Math.cos(p) * 50);
+      } else {
+        const ahead = 4 * Math.min(1, Math.max(0, this.idle - RECENTER_AFTER));
+        this.camera.lookAt(car.pos.x + fx * ahead + sx, carY + m.look, car.pos.z + fz * ahead + sz);
+      }
     }
     const fovTarget = 62 + Math.min(vel * 0.35, 14);
     this.camera.fov += (fovTarget - this.camera.fov) * Math.min(1, dt * 2);

@@ -1,12 +1,23 @@
 import * as THREE from 'three';
+import { STRIKES } from './people/person.js';
 
-const PISTOL = { damage: 34, cooldown: 0.22, range: 80, clip: 17 };
-const PUNCH = { damage: 20, cooldown: 0.42, range: 1.5 };
-const AIM_ASSIST = Math.cos(THREE.MathUtils.degToRad(7));
+const PISTOL = { cooldown: 0.22, range: 80 };
+// Head, torso, legs: nobody drops to fewer than three shots.
+const ZONES = [{ name: 'head', above: 1.5, damage: 34 }, { name: 'torso', above: 0.8, damage: 26 }, { name: 'legs', above: -1, damage: 17 }];
+// The combo chain; uppercut and kick put people on the floor. Max 10 means at least ten punches to finish anyone.
+const MOVES = {
+  jab: { damage: 7, time: 0.3, reach: 1.4 },
+  cross: { damage: 8, time: 0.34, reach: 1.45 },
+  hook: { damage: 9, time: 0.38, reach: 1.35 },
+  uppercut: { damage: 10, time: 0.42, reach: 1.3, knock: true },
+  kick: { damage: 10, time: 0.5, reach: 1.7, knock: true },
+};
+const COMBO_WINDOW = 0.9;
+const AIM_ASSIST = Math.cos(THREE.MathUtils.degToRad(5));
 
 // Fists and a pistol: hitscan from the camera with a little aim assist, tracers and a muzzle flash.
 export function createWeapons(scene) {
-  const state = { current: 'fists', ammo: 68, cooldown: 0, punchT: 1, aimT: 0 };
+  const state = { current: 'fists', ammo: 68, cooldown: 0, aimT: 0, strike: null, combo: 0, sinceStrike: 9 };
   const tracers = [];
   const tracerMat = new THREE.LineBasicMaterial({ color: '#ffe9a8', transparent: true, opacity: 0.9 });
   const flash = new THREE.PointLight('#ffcf70', 0, 6, 2);
@@ -27,8 +38,12 @@ export function createWeapons(scene) {
 
   function update(dt) {
     state.cooldown -= dt;
-    state.punchT += dt / PUNCH.cooldown;
     state.aimT -= dt;
+    state.sinceStrike += dt;
+    if (state.strike) {
+      state.strike.k += dt / MOVES[state.strike.kind].time;
+      if (state.strike.k >= 1) state.strike = null;
+    }
     flash.intensity = Math.max(0, flash.intensity - dt * 120);
     for (const tr of [...tracers]) {
       tr.t -= dt;
@@ -79,42 +94,54 @@ export function createWeapons(scene) {
     const look = new THREE.Vector3();
     camera.getWorldDirection(look);
     const startT = eye.distanceTo(shooter) + 0.6;
-    let aimAt = null, bestDot = AIM_ASSIST;
-    for (const tg of targets) {
-      const chest = new THREE.Vector3(tg.pos.x, tg.pos.y + tg.height * 0.65, tg.pos.z);
-      const to = chest.clone().sub(eye);
-      const d = to.length();
-      if (d > PISTOL.range || d < startT) continue;
-      const dot = to.divideScalar(d).dot(look);
-      if (dot > bestDot) {
-        bestDot = dot;
-        aimAt = chest;
-      }
-    }
-    // The camera picks the aim point; the bullet itself flies from the shooter's chest so walls next to the camera don't eat it.
-    if (!aimAt) aimAt = cast(eye, look, [], colliders, startT).point;
     const origin = new THREE.Vector3(shooter.x, shooter.y + 1.4, shooter.z);
-    const dir = aimAt.clone().sub(origin).normalize();
-    const hit = cast(origin, dir, targets, colliders, 0.4);
+    const fire = (at) => {
+      const dir = at.clone().sub(origin).normalize();
+      return { ...cast(origin, dir, targets, colliders, 0.4), dir };
+    };
+    // The camera picks the aim point; the bullet flies from the shooter's chest so walls beside the camera don't eat it.
+    let hit = fire(cast(eye, look, targets, colliders, startT).point);
+    if (!hit.target) {
+      // Mild assist: only when you'd otherwise miss, nudge onto the chest of someone just off the crosshair.
+      let assist = null, bestDot = AIM_ASSIST;
+      for (const tg of targets) {
+        const chest = new THREE.Vector3(tg.pos.x, tg.pos.y + tg.height * 0.65, tg.pos.z);
+        const to = chest.clone().sub(eye);
+        const d = to.length();
+        if (d > PISTOL.range || d < startT) continue;
+        const dot = to.divideScalar(d).dot(look);
+        if (dot > bestDot) {
+          bestDot = dot;
+          assist = chest;
+        }
+      }
+      if (assist) hit = fire(assist);
+    }
+    const dir = hit.dir;
     muzzle.updateWorldMatrix(true, false);
     tracer(new THREE.Vector3().setFromMatrixPosition(muzzle.matrixWorld), hit.point);
-    return { ...hit, dir: new THREE.Vector2(dir.x, dir.z).normalize() };
+    const zone = hit.target && ZONES.find((z) => hit.point.y - hit.target.pos.y > z.above * (hit.target.height / 1.8));
+    return { ...hit, zone: zone?.name, damage: zone?.damage ?? 0, dir: new THREE.Vector2(dir.x, dir.z).normalize() };
   }
 
-  // Jab whoever is closest in front of the puncher.
+  // Next move in the combo (it resets after a pause), landing on whoever is closest in front.
   function punch({ pos, heading, targets }) {
-    if (state.punchT < 1) return null;
-    state.punchT = 0;
+    if (state.strike && state.strike.k < 0.7) return null;
+    state.combo = state.sinceStrike < COMBO_WINDOW ? (state.combo + 1) % STRIKES.length : 0;
+    state.sinceStrike = 0;
+    const kind = STRIKES[state.combo];
+    const move = MOVES[kind];
+    state.strike = { kind, k: 0 };
     const fx = Math.sin(heading), fz = Math.cos(heading);
-    let best = null, bestD = PUNCH.range;
+    let best = null, bestD = move.reach;
     for (const tg of targets) {
       const dx = tg.pos.x - pos.x, dz = tg.pos.z - pos.z, d = Math.hypot(dx, dz);
       if (d > bestD || Math.abs(tg.pos.y - pos.y) > 1 || (dx * fx + dz * fz) / (d || 1) < 0.4) continue;
       best = tg;
       bestD = d;
     }
-    return { target: best, dir: new THREE.Vector2(fx, fz) };
+    return { target: best, kind, damage: move.damage, knock: !!move.knock, dir: new THREE.Vector2(fx, fz) };
   }
 
-  return { state, cycle, update, shoot, punch, tracer, PISTOL, PUNCH };
+  return { state, cycle, update, shoot, punch, tracer, MOVES };
 }

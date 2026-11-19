@@ -267,21 +267,71 @@ export function poseClimb(p, k) {
   p.torso.rotation.set(0.25 + over * 0.3, 0, 0);
 }
 
-// Upper-body overlays on top of the walk cycle: pistol aim (pitch down is positive) or a right jab.
+export const STRIKES = ['jab', 'cross', 'hook', 'uppercut', 'kick'];
+
+function guard(p, side) {
+  const arm = side < 0 ? p.armL : p.armR, elbow = side < 0 ? p.elbowL : p.elbowR;
+  arm.rotation.set(-1.15, 0, side * -0.2);
+  elbow.rotation.x = -1.95;
+}
+
+// Upper-body overlays on top of the walk cycle: pistol aim (pitch down is positive), fists-up guard,
+// a flinch from being hit, or one of the STRIKES (k runs 0..1 through the move).
 export function poseArms(p, arms) {
-  if (arms.mode === 'aim') {
-    p.armR.rotation.set(-Math.PI / 2 + arms.pitch, 0, 0.05);
-    p.elbowR.rotation.x = 0;
-    p.armL.rotation.set(-Math.PI / 2 + arms.pitch + 0.1, 0, -0.45);
-    p.elbowL.rotation.x = -0.3;
-    p.torso.rotation.set(0, 0, 0);
-  } else if (arms.mode === 'punch') {
-    const jab = Math.sin(Math.min(1, arms.k) * Math.PI);
-    p.armR.rotation.set(-0.6 - jab * 1.0, 0, -0.1);
-    p.elbowR.rotation.x = -1.6 + jab * 1.5;
-    p.armL.rotation.set(-1.2, 0, 0.2);
-    p.elbowL.rotation.x = -1.9;
-    p.torso.rotation.set(0.1, -0.35 + jab * 0.6, 0);
+  const hit = Math.sin(Math.min(1, arms.k ?? 0) * Math.PI);
+  switch (arms.mode) {
+    case 'aim':
+      p.armR.rotation.set(-Math.PI / 2 + arms.pitch, 0, 0.05);
+      p.elbowR.rotation.x = 0;
+      p.armL.rotation.set(-Math.PI / 2 + arms.pitch + 0.1, 0, -0.45);
+      p.elbowL.rotation.x = -0.3;
+      p.torso.rotation.set(0, 0, 0);
+      break;
+    case 'guard':
+      guard(p, 1);
+      guard(p, -1);
+      p.torso.rotation.set(0.12, 0, 0);
+      break;
+    case 'flinch':
+      guard(p, 1);
+      guard(p, -1);
+      p.torso.rotation.set(-0.45 * hit, (arms.side || 1) * 0.3 * hit, 0);
+      break;
+    case 'jab':
+      guard(p, 1);
+      p.armL.rotation.set(-0.6 - hit * 1.0, 0, 0.1);
+      p.elbowL.rotation.x = -1.6 + hit * 1.5;
+      p.torso.rotation.set(0.1, 0.25 - hit * 0.45, 0);
+      break;
+    case 'cross':
+      guard(p, -1);
+      p.armR.rotation.set(-0.6 - hit * 1.0, 0, -0.1);
+      p.elbowR.rotation.x = -1.6 + hit * 1.5;
+      p.torso.rotation.set(0.1, -0.35 + hit * 0.7, 0);
+      break;
+    case 'hook':
+      guard(p, 1);
+      p.armL.rotation.set(-1.5, 0, 0.95 - hit * 1.2);
+      p.elbowL.rotation.x = -1.4;
+      p.torso.rotation.set(0.1, -0.5 + hit * 1.0, 0);
+      break;
+    case 'uppercut':
+      guard(p, -1);
+      p.armR.rotation.set(-0.2 - hit * 2.3, 0, -0.1);
+      p.elbowR.rotation.x = -2.0 + hit * 0.9;
+      p.torso.rotation.set(0.3 - hit * 0.45, 0.3 * hit, 0);
+      p.kneeL.rotation.x = 0.5 * (1 - hit);
+      p.kneeR.rotation.x = 0.5 * (1 - hit);
+      break;
+    case 'kick':
+      guard(p, 1);
+      guard(p, -1);
+      p.legR.rotation.set(-1.7 * hit, 0, 0);
+      p.kneeR.rotation.x = 1.3 * (1 - hit) + 0.1;
+      p.legL.rotation.set(0.15 * hit, 0, 0);
+      p.kneeL.rotation.x = 0.2;
+      p.torso.rotation.set(-0.3 * hit, 0, 0);
+      break;
   }
 }
 

@@ -378,7 +378,8 @@ function hitByTraffic(walker, vehicles) {
 }
 
 const FOOT_CAMERA = { dist: 5.5, height: 2.4, look: 1.4, free: true };
-const AIM_CAMERA = { dist: 3.2, height: 1.9, look: 1.6, side: 0.75, free: true };
+const AIM_CAMERA = { dist: 3.4, height: 2.15, look: 1.85, side: 0.85, free: true, aim: true };
+const PUNCH_ASSIST = { range: 2.6, cone: Math.cos(THREE.MathUtils.degToRad(65)) };
 
 function ramPolice() {
   if (ramCooldown > 0) return;
@@ -388,11 +389,12 @@ function ramPolice() {
   if (first) hud.say('You rammed the cops. Now they are properly angry.', 3);
 }
 
-function hurtCop(o, amount, dir, how) {
+function hurtCop(o, amount, dir, how, knock = false) {
   const { police } = world;
-  if (!police.officers.damage(o, amount, dir)) return;
+  const first = police.state.stars < 5;
+  if (!police.officers.damage(o, amount, dir, { knock })) return;
   police.raiseTo(5);
-  hud.say(how === 'car' ? 'You ran over a cop. Every unit in the Cape is coming.' : 'Officer down. Every unit in the Cape is coming.', 3);
+  if (first) hud.say(how === 'car' ? 'You ran over a cop. Every unit in the Cape is coming.' : 'You attacked a cop. Every unit in the Cape is coming.', 3);
 }
 
 // Bullets, fists and bumpers can all find these.
@@ -400,7 +402,7 @@ function combatTargets() {
   const { peds, police } = world;
   const list = [];
   for (const p of peds.peds) {
-    if (p.state !== 'down' && p.model.group.visible) list.push({ pos: p.pos, height: 1.8, radius: 0.45, kind: 'ped', ref: p });
+    if (p.state !== 'dead' && p.model.group.visible) list.push({ pos: p.pos, height: p.state === 'down' ? 0.5 : 1.8, radius: 0.45, kind: 'ped', ref: p });
   }
   for (const o of police.officers.list) {
     if (o.hp > 0) list.push({ pos: o.pos, height: o.state === 'down' ? 0.5 : 1.8, radius: 0.45, kind: 'cop', ref: o });
@@ -421,25 +423,65 @@ function attack(armed) {
     peds.scare(walker.pos.x, walker.pos.z, 35);
     if (police.nearCop(walker.pos.x, walker.pos.z, 50)) police.raiseTo(2);
     else police.addHeat(8);
-    landHit(shot.target, weapons.PISTOL.damage, shot.dir, 'shot');
+    landHit(shot.target, shot.damage, shot.dir, 'shot');
   } else {
+    assistPunch(targets);
     const hit = weapons.punch({ pos: walker.pos, heading: walker.heading, targets });
     if (hit?.target) {
       audio.punch();
-      landHit(hit.target, weapons.PUNCH.damage, hit.dir, 'punch');
+      landHit(hit.target, hit.damage, hit.dir, 'punch', hit.knock);
     }
   }
 }
 
-function landHit(target, amount, dir, how) {
+// Mild punch assist: turn to face whoever is close in front, and step in if they're just out of reach.
+function assistPunch(targets) {
+  const { walker } = world;
+  const facing = chase.viewYaw;
+  const fx = Math.sin(facing), fz = Math.cos(facing);
+  let best = null, bestD = PUNCH_ASSIST.range;
+  for (const tg of targets) {
+    const dx = tg.pos.x - walker.pos.x, dz = tg.pos.z - walker.pos.z, d = Math.hypot(dx, dz);
+    if (d > bestD || Math.abs(tg.pos.y - walker.pos.y) > 1 || (dx * fx + dz * fz) / (d || 1) < PUNCH_ASSIST.cone) continue;
+    best = tg;
+    bestD = d;
+  }
+  if (!best) return;
+  const dx = best.pos.x - walker.pos.x, dz = best.pos.z - walker.pos.z;
+  walker.heading = Math.atan2(dx, dz);
+  if (bestD > 1.2) walker.vel.set((dx / bestD) * 5, (dz / bestD) * 5);
+}
+
+function landHit(target, amount, dir, how, knock = false) {
   if (!target) return;
   const { peds, walker } = world;
-  if (target.kind === 'cop') hurtCop(target.ref, amount, dir, how);
+  if (target.kind === 'cop') hurtCop(target.ref, amount, dir, how, knock);
   else {
-    peds.knock(target.ref, dir, how === 'shot' ? 3 : 2, how === 'shot' ? 9 : 3.5);
-    crime(how === 'shot' ? 60 : 20, walker.pos.x, walker.pos.z, 50);
-    if (how === 'punch' && Math.random() < 0.5) say(HIT_LINES[Math.floor(Math.random() * HIT_LINES.length)]);
+    const killed = peds.hurt(target.ref, amount, dir, { knock });
+    crime(killed ? 60 : how === 'shot' ? 30 : 6, walker.pos.x, walker.pos.z, 50);
+    if (!killed && how === 'punch' && Math.random() < 0.3) say(HIT_LINES[Math.floor(Math.random() * HIT_LINES.length)]);
   }
+}
+
+// A pedestrian who's fighting back lands a punch or takes a shot at the player.
+function pedAttack(p, kind) {
+  const { walker, weapons } = world;
+  if (!state.onFoot) return;
+  if (kind === 'punch') {
+    audio.punch();
+    damage(4);
+    const dx = walker.pos.x - p.pos.x, dz = walker.pos.z - p.pos.z, d = Math.hypot(dx, dz) || 1;
+    walker.vel.add(new THREE.Vector2((dx / d) * 2, (dz / d) * 2));
+    return;
+  }
+  p.model.muzzle.updateWorldMatrix(true, false);
+  const from = new THREE.Vector3().setFromMatrixPosition(p.model.muzzle.matrixWorld);
+  const hit = Math.random() < 0.35;
+  const to = new THREE.Vector3(walker.pos.x, walker.pos.y + 1.2, walker.pos.z);
+  if (!hit) to.add(new THREE.Vector3((Math.random() - 0.5) * 3, Math.random() * 1.5, (Math.random() - 0.5) * 3));
+  weapons.tracer(from, to);
+  audio.gunshot(Math.max(0.15, 1 - from.distanceTo(to) / 40));
+  if (hit) damage(5);
 }
 
 function runOverCops(vehicle) {
@@ -541,8 +583,8 @@ function tick(dt) {
     walker.update(sdt, input, chase.viewYaw, { colliders, vehicles: [...traffic.cars, ...cops, ...parked], jump: active && wasPressed('Space'), aiming });
     hitByTraffic(walker, [...traffic.cars, ...cops]);
     if (active && !walker.busy && !walker.airborne) attack(armed);
-    walker.arms = !walker.busy && aiming ? { mode: 'aim', pitch: Math.max(-0.6, Math.min(0.6, chase.lookPitch * 0.7 - 0.15)) }
-      : weapons.state.punchT < 1 ? { mode: 'punch', k: weapons.state.punchT } : null;
+    walker.arms = !walker.busy && aiming ? { mode: 'aim', pitch: chase.aimPitch }
+      : weapons.state.strike ? { mode: weapons.state.strike.kind, k: weapons.state.strike.k } : null;
   } else if (vehicle) runOverCops(vehicle);
   traffic.update(sdt, vehicle, onImpact, { signalsOff: state.loadshedding, lights: sky.state.lights, walker: state.onFoot ? walker : null });
 
@@ -552,7 +594,7 @@ function tick(dt) {
     crime(28, p.pos.x, p.pos.z);
     if (Math.random() < 0.5) say(HIT_LINES[Math.floor(Math.random() * HIT_LINES.length)]);
     audio.crash(s * 0.6);
-  });
+  }, { pos: walker.pos, onFoot: state.onFoot && !state.overlay, onAttack: pedAttack }, colliders);
 
   ramCooldown -= sdt;
   const fx = Math.sin(me.heading), fz = Math.cos(me.heading);

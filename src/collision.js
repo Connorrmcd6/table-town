@@ -53,7 +53,7 @@ export class ColliderGrid {
         if (rise < minRise || rise > maxRise) continue;
         const ix = Math.max(b.minX + 0.3, Math.min(b.maxX - 0.3, px + fx * 0.6));
         const iz = Math.max(b.minZ + 0.3, Math.min(b.maxZ - 0.3, pz + fz * 0.6));
-        return { x: ix, z: iz, y: surfaceY(b, ix, iz), rise };
+        return { x: ix, z: iz, y: surfaceY(b, ix, iz), rise, box: b };
       }
     }
     return null;

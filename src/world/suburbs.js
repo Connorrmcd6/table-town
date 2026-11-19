@@ -4,6 +4,7 @@ import { MeshBuilder, FACE } from './geometry.js';
 import { ROADS, buildRoads, GRID_X, GRID_Z } from './city.js';
 import { buildRoadIndex } from './roadIndex.js';
 import { addSuburbHouse, fillPerimeter, footprintHeights } from './houses.js';
+import { boundaryWalls, clearOf } from './lowwalls.js';
 import { asphaltTexture, officeTextures, houseFacadeTexture } from './textures.js';
 
 const CELL = toWorld(100);
@@ -149,10 +150,14 @@ export function createSuburbs(scene, colliders) {
       addApartments(flats, colliders, inner);
       continue;
     }
+    const homes = [];
     fillPerimeter(inner, rand, (hx, hz, w, d, facing) => {
       if (distToSegments(hx, hz, specialRoads) < 10 || !footprintClear(hx, hz, w, d, facing)) return;
-      addSuburbHouse(walls, roofs, colliders, rand, hx, hz, w, d, facing);
+      homes.push(addSuburbHouse(walls, roofs, colliders, rand, hx, hz, w, d, facing));
     });
+    const garden = { x0: inner.x0 - 0.6, x1: inner.x1 + 0.6, z0: inner.z0 - 0.6, z1: inner.z1 + 0.6 };
+    const clearHomes = clearOf(homes, 0.9);
+    boundaryWalls(roofs, colliders, rand, garden, { isClear: (x, z) => clearHomes(x, z) && distToSegments(x, z, specialRoads) > 7 });
     for (let k = 0; k < 2; k++) {
       const tx = inner.x0 + 12 + rand() * Math.max(0, inner.x1 - inner.x0 - 24);
       const tz = inner.z0 + 12 + rand() * Math.max(0, inner.z1 - inner.z0 - 24);

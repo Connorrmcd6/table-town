@@ -12,6 +12,7 @@ A browser-based, PS2-era open-world caper set in a parody of Cape Town. Built wi
 
 - `W A S D` / arrows - drive or run, `Space` - handbrake in a car, jump on foot, or climb when facing a wall or car
 - Click - punch or shoot, right-click - aim, `Q` / mouse wheel - switch between fists and pistol
+- Heal by grabbing spinning vetkoek on the pavements (+25), resting (slowly back to 50%), or the red-cross marker at Groote Schuur (full health, R200)
 - `F` - get in, jack a car, or bail out (works at speed, but it hurts)
 - `H` hooter, `G` gaartjie, `C` camera, `R` unstick car, `M` mute
 - Mouse - look around (click to capture, `Esc` to release)

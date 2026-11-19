@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 
 const NIGHT = {
-  zenith: '#050a1a', horizon: '#1c2440', sunGlow: '#3a4a70', fog: '#141a2c', fogDensity: 0.0002,
-  sun: '#8fa6d8', sunIntensity: 0.45, hemiSky: '#3e4c78', hemiGround: '#18181c', hemiIntensity: 1.1,
+  zenith: '#060c20', horizon: '#232c4c', sunGlow: '#3a4a70', fog: '#1a2236', fogDensity: 0.0002,
+  sun: '#9db2e0', sunIntensity: 0.9, hemiSky: '#5a6aa0', hemiGround: '#2c2c38', hemiIntensity: 2.0,
   windows: 0.5, stars: 1,
 };
 const DAWN = {
@@ -27,7 +27,7 @@ const GOLDEN = {
 };
 const DUSK = {
   zenith: '#2a3260', horizon: '#c86a5a', sunGlow: '#ff7a50', fog: '#7a5a68', fogDensity: 0.00018,
-  sun: '#ff8a60', sunIntensity: 1.2, hemiSky: '#8a6a8a', hemiGround: '#2a2228', hemiIntensity: 1.0,
+  sun: '#ff8a60', sunIntensity: 1.2, hemiSky: '#8a6a8a', hemiGround: '#2a2228', hemiIntensity: 1.5,
   windows: 0.6, stars: 0.3,
 };
 

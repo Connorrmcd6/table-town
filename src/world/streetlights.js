@@ -4,6 +4,7 @@ import { ROADS } from './city.js';
 import { glowMaterial } from '../vehicles/traffic.js';
 
 const POLE_H = 7;
+const REAL_LIGHTS = 6;
 
 export function createStreetlights(scene, colliders, roads) {
   const spots = [];
@@ -51,13 +52,38 @@ export function createStreetlights(scene, colliders, roads) {
   poles.castShadow = arms.castShadow = true;
   scene.add(poles, arms, heads, pools);
 
+  // The few lamps nearest the player get a real light so people and cars under them are lit, not just the road decal.
+  const lamps = Array.from({ length: REAL_LIGHTS }, () => {
+    const l = new THREE.PointLight('#ffc878', 0, 26, 1);
+    scene.add(l);
+    return l;
+  });
+  for (const s of spots) {
+    s.hx = s.x + s.toRoadX * 1.7;
+    s.hz = s.z + s.toRoadZ * 1.7;
+    s.hy = heightAt(s.x, s.z) + POLE_H - 0.4;
+  }
+  let level = 0, sortT = 0;
+
   const DAY = new THREE.Color('#8a8a84'), NIGHT = new THREE.Color('#ffd890');
   return {
     count: spots.length,
-    setLevel(level) {
-      headMat.color.copy(DAY).lerp(NIGHT, level);
-      pools.material.opacity = level * 0.95;
-      pools.visible = level > 0.01;
+    setLevel(v) {
+      level = v;
+      headMat.color.copy(DAY).lerp(NIGHT, v);
+      pools.material.opacity = Math.min(1, v * 1.15);
+      pools.visible = v > 0.01;
+    },
+    update(dt, focus) {
+      sortT -= dt;
+      for (const l of lamps) l.intensity = level * 70;
+      if (sortT > 0 || level < 0.01) return;
+      sortT = 0.4;
+      const near = spots
+        .map((s) => ({ s, d: (s.hx - focus.x) ** 2 + (s.hz - focus.z) ** 2 }))
+        .sort((a, b) => a.d - b.d)
+        .slice(0, REAL_LIGHTS);
+      near.forEach(({ s }, i) => lamps[i].position.set(s.hx, s.hy, s.hz));
     },
   };
 }

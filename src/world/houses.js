@@ -57,6 +57,7 @@ export function addSuburbHouse(walls, roofs, colliders, rand, cx, cz, w, d, faci
   const rise = 1.6 + rand() * 1.2;
   gableRoof(roofs, x0, x1, z0, z1, top, rise, alongX, roof);
   colliders.push({ minX: x0, maxX: x1, minZ: z0, maxZ: z1, top, gable: { rise, alongX } });
+  return { x0, x1, z0, z1 };
 }
 
 // Detached houses with garden gaps around the perimeter of a rectangle, fronts facing out.

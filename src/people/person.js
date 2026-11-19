@@ -275,6 +275,22 @@ function guard(p, side) {
   elbow.rotation.x = -1.95;
 }
 
+// Vaulting a wall: one hand planted, legs tucked and swung through, then reaching down for the ground.
+export function poseVault(p, k) {
+  const tuck = Math.sin(Math.min(1, k) * Math.PI);
+  p.body.rotation.x = 0;
+  p.body.position.set(0, 0, 0);
+  p.armL.rotation.set(-0.9 + tuck * 0.6, 0, 0.3);
+  p.elbowL.rotation.x = -0.2;
+  p.armR.rotation.set(-1.6 - tuck * 0.5, 0, -0.5);
+  p.elbowR.rotation.x = -0.6;
+  p.legL.rotation.set(-1.4 * tuck, 0, 0.35 * tuck);
+  p.legR.rotation.set(-1.2 * tuck, 0, 0.45 * tuck);
+  p.kneeL.rotation.x = 1.7 * tuck;
+  p.kneeR.rotation.x = 1.5 * tuck;
+  p.torso.rotation.set(0.35 * tuck, 0, -0.25 * tuck);
+}
+
 // Upper-body overlays on top of the walk cycle: pistol aim (pitch down is positive), fists-up guard,
 // a flinch from being hit, or one of the STRIKES (k runs 0..1 through the move).
 export function poseArms(p, arms) {

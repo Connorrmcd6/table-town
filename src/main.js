@@ -10,6 +10,7 @@ import { ColliderGrid } from './collision.js';
 import { playerTaxi, makeVehicle, seatRider } from './vehicles/models.js';
 import { clearPose, addPistol } from './people/person.js';
 import { createWeapons } from './weapons.js';
+import { createPickups, createHospitalMarker } from './world/pickups.js';
 import { Car } from './vehicles/car.js';
 import { loadVehicleModels } from './vehicles/gltfVehicles.js';
 import { createTraffic } from './vehicles/traffic.js';
@@ -52,8 +53,25 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+// A soft unshadowed light that follows the player at night so you can always see who's around you.
+const playerFill = new THREE.PointLight('#ffe6c0', 0, 18, 1);
+scene.add(playerFill);
+
 const titleEl = document.getElementById('title');
 const startEl = document.getElementById('start');
+
+// First patch of pavement near (x, z) that's off the road and clear of buildings and walls.
+function openSpotNear(boxes, roads, x, z) {
+  const grid = new ColliderGrid(boxes);
+  for (let r = 6; r < 30; r += 1.5) {
+    for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
+      const px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r;
+      const clear = [[0, 0], [2, 0], [-2, 0], [0, 2], [0, -2]].every(([dx, dz]) => !grid.boxesAt(px + dx, pz + dz).length);
+      if (clear && roads.clearance(px, pz) > 2.5) return { x: px, z: pz };
+    }
+  }
+  return { x, z };
+}
 
 function build() {
   const sky = createSky(scene);
@@ -81,6 +99,10 @@ function build() {
     ...suburbs.walkRects,
   ];
   const peds = createPedestrians(scene, walkRects, 50);
+  const pickups = createPickups(scene, walkRects);
+  const clinic = placeOnRoad(traffic, HOSPITAL.x, HOSPITAL.z);
+  const spot = openSpotNear(city.colliders, roads, clinic.x, clinic.z);
+  const hospital = createHospitalMarker(scene, spot.x, spot.z);
   const police = createPolice(scene, traffic);
   const showroomZ = toWorld(-180) - 2.6;
   const parked = [['sports', 13], ['scooter', 21], ['superbike', 26]].map(([type, dx]) => {
@@ -88,7 +110,7 @@ function build() {
     scene.add(model.group);
     return new Car(model, toWorld(-180) + dx, showroomZ, Math.PI / 2);
   });
-  return { sky, city, suburbs, landmarks, streetlights, colliders, vehicle, traffic, headlight, roads, walker, peds, police, parked, weapons };
+  return { sky, city, suburbs, landmarks, streetlights, colliders, vehicle, traffic, headlight, roads, walker, peds, police, parked, weapons, pickups, hospital };
 }
 
 let world;
@@ -105,6 +127,8 @@ const state = {
   started: false,
   onFoot: false,
   health: 100,
+  sinceHurt: 99,
+  hospitalT: 0,
   overlay: null,
 };
 
@@ -124,6 +148,8 @@ function applyLighting() {
   suburbs.setWindowGlow(glow);
   world.streetlights.setLevel(state.loadshedding ? 0 : sky.state.lights);
   world.headlight.intensity = state.onFoot ? 0 : sky.state.lights * 90;
+  renderer.toneMappingExposure = 1.2 + sky.state.night * 0.35;
+  playerFill.intensity = sky.state.night * (state.loadshedding ? 6 : 10);
 }
 
 function applyCheat(cheat) {
@@ -337,7 +363,10 @@ const wind = new THREE.Vector2();
 let streetTimer = 0, road = '', windT = 0, ramCooldown = 0;
 const redRunCooldown = new Map();
 
+const HOSPITAL_FEE = 200, REGEN_TO = 50, REGEN_AFTER = 8;
+
 function damage(amount) {
+  state.sinceHurt = 0;
   state.health -= amount;
   if (state.health <= 0) {
     state.health = 0;
@@ -509,6 +538,31 @@ function copShot(from, hit) {
   if (hit) damage(state.onFoot ? 6 : 2);
 }
 
+// Vetkoek pickups, slow regen up to half health, and the hospital marker for a full patch-up.
+function heal(dt, me) {
+  const { pickups, hospital } = world;
+  hospital.update(dt);
+  if (state.overlay) return;
+  const got = pickups.update(dt, me.pos, !state.onFoot, state.health);
+  if (got) {
+    state.health = Math.min(100, state.health + got);
+    audio.punch();
+    hud.notify(`Vetkoek! +${got} health`, 1.5);
+  }
+  state.sinceHurt += dt;
+  if (state.sinceHurt > REGEN_AFTER && state.health < REGEN_TO) state.health = Math.min(REGEN_TO, state.health + dt * 3);
+  state.hospitalT -= dt;
+  if (state.hospitalT <= 0 && state.health < 100 && hospital.contains(me.pos.x, me.pos.z)) {
+    state.hospitalT = 4;
+    if (state.cash >= HOSPITAL_FEE) {
+      state.cash -= HOSPITAL_FEE;
+      state.health = 100;
+      audio.jingle();
+      hud.notify(`Groote Schuur patched you up. R${HOSPITAL_FEE}.`, 3);
+    } else hud.notify(`You need R${HOSPITAL_FEE} for the hospital, bru.`, 3);
+  }
+}
+
 const camRay = new THREE.Vector3();
 function keepCameraOutOfWalls(focus, colliders) {
   const from = camRay.set(focus.pos.x, focus.pos.y + 1.6, focus.pos.z);
@@ -624,6 +678,9 @@ function tick(dt) {
     }
   }
 
+  heal(sdt, me);
+  world.streetlights.update(dt, me.pos);
+  playerFill.position.set(me.pos.x, me.pos.y + 3.5, me.pos.z);
   landmarks.update(sdt);
   chase.update(dt, controlled());
   keepCameraOutOfWalls(controlled(), colliders);

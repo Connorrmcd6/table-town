@@ -8,7 +8,7 @@ export function createHud() {
   const street = $('street');
   const healthFill = $('healthfill'), wanted = $('wanted'), promptEl = $('prompt'), big = $('bigtext');
   const weaponEl = $('weapon'), crosshair = $('crosshair');
-  let lastWeapon = '';
+  let lastWeapon = null;
   const stars = [...wanted.children];
   let lastStars = -1, lastPrompt = null;
   const rctx = radar.getContext('2d');

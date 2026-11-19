@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { heightAt } from '../world/heightmap.js';
-import { makePerson, animatePerson, knockDown, poseAirborne, poseRoll, poseClimb, poseArms } from './person.js';
+import { makePerson, animatePerson, knockDown, poseAirborne, poseRoll, poseClimb, poseVault, poseArms } from './person.js';
 import { vehicleCircles } from './pedestrians.js';
 
 const SPRINT = 8.5, AIM_WALK = 3.2;
 const JUMP_SPEED = 6, GRAVITY = 18;
-const CLIMB_MIN = 0.7, CLIMB_MAX = 7.5;
+const CLIMB_MIN = 1.0, CLIMB_MAX = 7.5, VAULT_MAX = 2.0, VAULT_THICK = 1.0;
 export const PLAYER_LOOK = {
   skin: '#7a5038', top: '#8a1c2b', bottom: '#1b1b1b', shoes: '#f4f4f0', hair: '#120c08', hat: '#d9c38a',
   hairStyle: 'bucket', longSleeves: false, shorts: false, scale: 1,
@@ -133,11 +133,40 @@ export class Walker {
       }
     }
     if (!target) return false;
+    const vault = target.box && target.rise <= VAULT_MAX && this.vaultLanding(colliders, target, fx, fz);
+    if (vault) {
+      this.climb = { t: 0, dur: 0.55 + target.rise * 0.1, from: this.pos.clone(), to: vault, peak: this.pos.y + target.rise + 0.25, vault: true, car: null };
+      this.vel.set(0, 0);
+      this.vy = 0;
+      this.airborne = false;
+      return true;
+    }
     this.climb = { t: 0, dur: 0.45 + target.rise * 0.16, from: this.pos.clone(), to: target, car: target.car || null };
     this.vel.set(0, 0);
     this.vy = 0;
     this.airborne = false;
     return true;
+  }
+
+  // Thin walls get vaulted: land on the ground just past the far side, if there's room.
+  vaultLanding(colliders, target, fx, fz) {
+    const b = target.box;
+    let x = this.pos.x, z = this.pos.z, crossed = false;
+    for (let d = 0.1; d < 2.5; d += 0.1) {
+      x = this.pos.x + fx * d;
+      z = this.pos.z + fz * d;
+      const inside = x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ;
+      if (inside) crossed = true;
+      else if (crossed) {
+        if (d > VAULT_THICK + 1.2) return null;
+        x += fx * 0.55;
+        z += fz * 0.55;
+        const y = Math.max(heightAt(x, z), colliders.surfaceAt(x, z, target.y));
+        if (colliders.contains(x, z, y + 0.3) || target.y - y > 3) return null;
+        return { x, z, y };
+      }
+    }
+    return null;
   }
 
   update(dt, input, viewYaw, { colliders, vehicles, jump = false, aiming = false }) {
@@ -236,6 +265,18 @@ export class Walker {
     const c = this.climb;
     c.t += dt;
     const k = Math.min(1, c.t / c.dur);
+    if (c.vault) {
+      // Up and over in one arc: rise to just above the wall, then drop to the landing spot.
+      const up = Math.min(1, k / 0.45), down = Math.max(0, (k - 0.45) / 0.55);
+      this.pos.x = c.from.x + (c.to.x - c.from.x) * k;
+      this.pos.z = c.from.z + (c.to.z - c.from.z) * k;
+      this.pos.y = k < 0.45 ? c.from.y + (c.peak - c.from.y) * Math.sin(up * Math.PI / 2) : c.peak + (c.to.y - c.peak) * down * down;
+      if (k >= 1) {
+        this.climb = null;
+        this.pos.y = c.to.y;
+      }
+      return;
+    }
     const up = Math.min(1, k / 0.7), over = Math.max(0, (k - 0.7) / 0.3);
     const ease = (x) => x * x * (3 - 2 * x);
     const to = c.car ? { x: c.to.x, z: c.to.z, y: onVehicleTop(c.car, c.to.x, c.to.z) ?? c.to.y } : c.to;
@@ -254,7 +295,7 @@ export class Walker {
     const g = this.model.group;
     g.position.copy(this.pos);
     g.rotation.y = this.heading;
-    if (this.climb) poseClimb(this.model, Math.min(1, this.climb.t / this.climb.dur));
+    if (this.climb) (this.climb.vault ? poseVault : poseClimb)(this.model, Math.min(1, this.climb.t / this.climb.dur));
     else if (this.roll) poseRoll(this.model, this.roll.t, this.roll.dur, this.roll.spins, this.roll.recover);
     else if (this.down > 0) knockDown(this.model, Math.min(1, this.down * 2));
     else {

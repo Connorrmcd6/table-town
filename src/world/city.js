@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { heightAt, w as toWorld, WORLD_SCALE } from './heightmap.js';
 import { MeshBuilder, FACE } from './geometry.js';
 import { addSuburbHouse, fillPerimeter } from './houses.js';
+import { boundaryWalls, planters, clearOf } from './lowwalls.js';
 
 const inset = (r, d) => ({ x0: r.x0 + d, x1: r.x1 - d, z0: r.z0 + d, z1: r.z1 - d });
 import {
@@ -310,10 +311,19 @@ export function createCity(scene) {
   const blocks = blockRects();
   for (const r of blocks) {
     buildSidewalk(r.park ? park : sidewalk, r);
-    if (r.park) continue;
+    if (r.park) {
+      boundaryWalls(roofs, colliders, rand, inset(r, 2), { low: true });
+      continue;
+    }
     if (r.bokaap) addBoKaapBlock(houses, colliders, r);
-    else if (r.suburb) fillPerimeter(inset(r, 2), rand, (cx, cz, w, d, f) => addSuburbHouse(houses, roofs, colliders, rand, cx, cz, w, d, f));
-    else addCbdBlock(offices, colliders, r);
+    else if (r.suburb) {
+      const homes = [];
+      fillPerimeter(inset(r, 2), rand, (cx, cz, w, d, f) => homes.push(addSuburbHouse(houses, roofs, colliders, rand, cx, cz, w, d, f)));
+      boundaryWalls(roofs, colliders, rand, inset(r, 1.75), { isClear: clearOf(homes, 0.6) });
+    } else {
+      addCbdBlock(offices, colliders, r);
+      planters(roofs, colliders, rand, r, 2.3);
+    }
   }
 
   const office = officeTextures();

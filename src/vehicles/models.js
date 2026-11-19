@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { makePerson, randomLook, poseRider } from '../people/person.js';
+import { gltfReady, gltfBody } from './gltfVehicles.js';
 
 const matCache = new Map();
 function mat(kind, color, emissive) {
@@ -256,6 +257,107 @@ function minibus(rnd, livery) {
   return { group: g, wheels: w, brake, spec: { length: L, width: W, wheelbase: 3.1, maxSpeed: 44, accel: 9, radius: r, mass: 1.6 } };
 }
 
+const SA_FLAG = ['#007a4d', '#ffb612', '#000000', '#ffffff', '#de3831', '#002395'];
+let flagDecal = null;
+
+// Gold belt pinstripe plus SA flag ribbons sweeping forward to a point behind the front wheel; u=0 is the nose.
+function flagDecalMaterial() {
+  if (flagDecal) return flagDecal;
+  const c = document.createElement('canvas');
+  c.width = 1024;
+  c.height = 160;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#f2b01e';
+  ctx.fillRect(0, 14, 1024, 8);
+  ctx.fillStyle = '#e07b1a';
+  ctx.fillRect(0, 22, 1024, 3);
+  ctx.lineCap = 'round';
+  const tip = { x: 170, y: 104 };
+  SA_FLAG.forEach((colour, i) => {
+    const rear = { x: 660 - i * 24, y: 58 + i * 13 };
+    ctx.strokeStyle = colour;
+    let prev = null;
+    for (let k = 0; k <= 60; k++) {
+      const t = k / 60;
+      const squeeze = t < 0.85 ? 1 : (1 - t) / 0.15;
+      const x = rear.x + (tip.x - rear.x) * t;
+      const y = rear.y + (tip.y + (i - 2.5) * 9.5 * squeeze - rear.y) * t + Math.sin(t * Math.PI * 2 + i * 0.7) * 9 * (1 - t);
+      if (prev) {
+        ctx.lineWidth = (t < 0.85 ? 3 + 8 * t : 9.8 * squeeze + 0.5) + (colour === '#000000' ? 0.5 : 0);
+        ctx.beginPath();
+        ctx.moveTo(prev.x, prev.y);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+      }
+      prev = { x, y };
+    }
+  });
+  const map = new THREE.CanvasTexture(c);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.anisotropy = 4;
+  flagDecal = new THREE.MeshLambertMaterial({ map, alphaTest: 0.5 });
+  return flagDecal;
+}
+
+function flagDecals(group) {
+  const material = flagDecalMaterial();
+  const length = 4.0, height = 0.62;
+  for (const side of [-1, 1]) {
+    const geo = new THREE.PlaneGeometry(length, height);
+    if (side < 0) {
+      const uv = geo.getAttribute('uv');
+      for (let i = 0; i < uv.count; i++) uv.setX(i, 1 - uv.getX(i));
+    }
+    const m = addMesh(group, geo, material);
+    m.castShadow = false;
+    m.position.set(side * 0.982, 0.9, -0.35);
+    m.rotation.y = side * Math.PI / 2;
+  }
+}
+
+function hiace(rnd) {
+  const g = new THREE.Group();
+  const brake = brakeMaterial();
+  const W = 1.94, L = 5.3;
+  flagDecals(g);
+  for (const side of [-1, 1]) tail(g, brake, 0.13, 0.5, side * 0.885, 1.05, -2.6);
+  plates(g, rnd, 0.62, 2.72, -2.72);
+  const model = optimize({ group: g, brake });
+  const { wheels: w, radius, wheelbase } = gltfBody('hiace', g);
+  return { ...model, wheels: w, spec: { length: L, width: W, wheelbase, maxSpeed: 44, accel: 9, radius, mass: 1.6 } };
+}
+
+function golfGti(rnd, color) {
+  const g = new THREE.Group();
+  const brake = brakeMaterial();
+  plates(g, rnd, 0.66, null, -1.83);
+  const model = optimize({ group: g, brake });
+  const { wheels: w, radius, wheelbase } = gltfBody('golf', g, { paint: mat('paint', color), brake });
+  return { ...model, wheels: w, spec: { length: 3.82, width: 1.62, wheelbase, maxSpeed: 46, accel: 10, radius, mass: 1 } };
+}
+
+function ranger(rnd) {
+  const g = new THREE.Group();
+  const brake = brakeMaterial();
+  for (const side of [-1, 1]) tail(g, brake, 0.11, 0.32, side * 0.8, 1.15, -2.665);
+  plates(g, rnd, 0.68, null, -2.7);
+  const model = optimize({ group: g, brake });
+  const { wheels: w, radius, wheelbase } = gltfBody('ranger', g);
+  return { ...model, wheels: w, spec: { length: 5.38, width: 2.03, wheelbase, maxSpeed: 100, accel: 15, drag: 0.0004, radius, mass: 1.6, steerScale: 0.9 } };
+}
+
+function sixty60(rnd) {
+  const g = new THREE.Group();
+  const brake = brakeMaterial();
+  const { wheels: w, radius, wheelbase, seat } = gltfBody('sixty60', g, { brake });
+  return {
+    group: g, wheels: w, brake,
+    spec: { length: 1.95, width: 0.8, wheelbase, maxSpeed: 24, accel: 6.5, radius, mass: 0.35, bike: true, steerScale: 0.6, seat: { y: seat.y, z: seat.z, lean: 0.05 } },
+  };
+}
+
+const taxiBody = (rnd, livery) => (gltfReady('hiace') ? hiace(rnd) : optimize(minibus(rnd, livery)));
+
 function hatch(rnd, color) {
   const g = new THREE.Group();
   const brake = brakeMaterial();
@@ -484,16 +586,16 @@ const maybeRider = (model, rnd, opts) => (opts.rider ? addRider(model, rnd) : mo
 
 export function makeVehicle(type, rnd = Math.random, opts = { rider: true }) {
   const p = (a) => a[Math.floor(rnd() * a.length)];
-  if (type === 'taxi') return optimize({ type, ...minibus(rnd, p(TAXI_LIVERIES)) });
-  if (type === 'golf') return optimize({ type, ...hatch(rnd, p(GOLF_COLOURS)) });
+  if (type === 'taxi') return { type, ...taxiBody(rnd, p(TAXI_LIVERIES)) };
+  if (type === 'golf') return gltfReady('golf') ? { type, ...golfGti(rnd, p(GOLF_COLOURS)) } : optimize({ type, ...hatch(rnd, p(GOLF_COLOURS)) });
   if (type === 'bakkie') return optimize({ type, ...bakkie(rnd, p(BAKKIE_COLOURS)) });
   if (type === 'police') return addSiren(optimize({ type, ...bakkie(rnd, '#f4f4f0', true) }));
-  if (type === 'scooter') return maybeRider(optimize({ type, ...scooter(rnd) }), rnd, opts);
+  if (type === 'scooter') return maybeRider(gltfReady('sixty60') ? { type, ...sixty60(rnd) } : optimize({ type, ...scooter(rnd) }), rnd, opts);
   if (type === 'superbike') return maybeRider(optimize({ type, ...superbike(rnd, p(BIKE_LIVERIES)) }), rnd, opts);
-  if (type === 'sports') return optimize({ type, ...sportsCar(rnd, p(SPORTS_COLOURS)) });
+  if (type === 'sports') return gltfReady('ranger') ? { type, ...ranger(rnd) } : optimize({ type, ...sportsCar(rnd, p(SPORTS_COLOURS)) });
   throw new Error(`unknown vehicle ${type}`);
 }
 
 export function playerTaxi() {
-  return optimize({ type: 'taxi', ...minibus(Math.random, ['#1f5fbf', '#f2c230']) });
+  return { type: 'taxi', ...taxiBody(Math.random, ['#1f5fbf', '#f2c230']) };
 }

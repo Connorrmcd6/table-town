@@ -10,6 +10,7 @@ import { ColliderGrid } from './collision.js';
 import { playerTaxi, makeVehicle, seatRider } from './vehicles/models.js';
 import { clearPose } from './people/person.js';
 import { Car } from './vehicles/car.js';
+import { loadVehicleModels } from './vehicles/gltfVehicles.js';
 import { createTraffic } from './vehicles/traffic.js';
 import { cityEdges, routeEdges, createJunctions, ROADS } from './world/city.js';
 import { buildRoadIndex } from './world/roadIndex.js';
@@ -29,7 +30,7 @@ const START_CLOCK = 16 * 60 + 30;
 const SUNDOWNER_STOPS = [6 * 60 + 15, 12 * 60, 17 * 60 + 30, 21 * 60];
 const MAX_PARKED = 6;
 const ENTER_RANGE = 2.2;
-const VEHICLE_NAMES = { taxi: 'taxi', golf: 'Citi Golf', bakkie: 'bakkie', police: 'SAPS bakkie', scooter: 'Sixty-ish scooter', superbike: 'superbike', sports: 'sports car' };
+const VEHICLE_NAMES = { taxi: 'taxi', golf: 'Citi Golf', bakkie: 'bakkie', police: 'SAPS bakkie', scooter: 'Sixty60 bike', superbike: 'superbike', sports: 'Ranger Raptor' };
 const JACKED_LINES = ['Haai! Jou ma se...!', "Voetsek! That's my car!", 'Eish! Not again!', 'Hey bru! Bring it back!', 'Ag no man, I just washed it!'];
 const HIT_LINES = ['Eish!', 'Watch where you drive, bru!', 'Aikona!', 'Jirre!'];
 
@@ -507,7 +508,7 @@ function start() {
   audio.initAudio();
 }
 
-setTimeout(() => {
+loadVehicleModels().then(() => {
   world = build();
   attachHeadlight(world.vehicle);
   world.sky.setTime(state.minutes);
@@ -520,4 +521,4 @@ setTimeout(() => {
   titleEl.addEventListener('click', start);
   window.__tabletown = { world, state, camera, renderer, scene, applyCheat, tick, chase };
   requestAnimationFrame(loop);
-}, 50);
+});

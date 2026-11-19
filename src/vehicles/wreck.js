@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLOW_TEXTURE } from './traffic.js';
 import { roofHeight } from '../people/walker.js';
 
-const MAX_HP = { bike: 60, car: 100 };
+const MAX_HP = { bike: 140, car: 260 };
 const BURN_TIME = 7, BLAST_RADIUS = 7;
 const CHARRED = new THREE.MeshLambertMaterial({ color: '#1c1a18' });
 const flameMat = new THREE.SpriteMaterial({ map: GLOW_TEXTURE, color: '#ff7a1a', blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { heightAt, atlanticLine, w as toWorld, WORLD_SCALE } from './heightmap.js';
+import { heightAt, atlanticLine, bloubergZ, w as toWorld, WORLD_SCALE } from './heightmap.js';
 import { MeshBuilder, FACE } from './geometry.js';
 import { addSuburbHouse, fillPerimeter } from './houses.js';
 import { boundaryWalls, planters, clearOf } from './lowwalls.js';
@@ -88,6 +88,16 @@ addRoad(
 addRoad(SEABOARD_ZS.filter((z) => z >= 900).map(seaboardPoint), 10, 'asphalt', 0.32, 'Victoria Road', true);
 addRoad([...scalePts([[-650, 1000], [-850, 1180], [-1100, 1380], [-1400, 1520]]), CLIFTON_JOIN], 10, 'asphalt', 0.32, 'Kloof Road', true);
 addRoad([...scalePts([[-650, 1000], [-850, 1250], [-1100, 1480], [-1350, 1660]]), CAMPS_BAY_JOIN], 10, 'asphalt', 0.32, 'Camps Bay Drive', true);
+
+// Round Table Bay to Bloubergstrand: Marine Drive up the east shore, then Beach Boulevard behind the dunes.
+export const BLOUBERG_ROAD_OFFSET = 180;
+const BLOUBERG_XS = Array.from({ length: 13 }, (_, i) => 925 - i * 125);
+const MARINE_END = [1050, -2626];
+addRoad(
+  scalePts([[1250, -560], [1700, -560], [2050, -620], [1950, -850], [1850, -1100], [1740, -1400], [1620, -1700], [1500, -2000], [1360, -2300], [1175, -2469], MARINE_END]),
+  12, 'asphalt', 0.32, 'Marine Drive', true
+);
+addRoad(scalePts([MARINE_END, ...BLOUBERG_XS.map((x) => [x, Math.round(bloubergZ(x) - BLOUBERG_ROAD_OFFSET)])]), 10, 'asphalt', 0.32, 'Beach Boulevard', true);
 addRoad(
   scalePts([[-650, 1000], [-900, 820], [-1150, 700], [-1300, 450], [-1300, 200], [-1220, 0], [-1150, -150]]),
   9, 'asphalt', 0.32, 'Signal Hill Road', true

@@ -3,6 +3,9 @@ import { heightAt } from '../world/heightmap.js';
 import { setBrakeLights } from './models.js';
 
 const G = 9.8;
+// Sideways grip in m/s²: caps how fast a car can turn at speed (bikes hold a tighter line).
+const LATERAL_GRIP = { car: 13, bike: 15 };
+const STEER_IN = 3.2, STEER_OUT = 7;
 
 export class Car {
   constructor(model, x, z, heading) {
@@ -12,6 +15,7 @@ export class Car {
     this.heading = heading;
     this.vel = new THREE.Vector2();
     this.steer = 0;
+    this.steerIn = 0;
     this.pitch = 0;
     this.roll = 0;
     this.lastImpact = 0;
@@ -71,10 +75,17 @@ export class Car {
     const grip = input.handbrake ? 1.2 : 7;
     vR *= Math.exp(-grip * dt);
 
-    const targetSteer = (input.steer * 0.6 * (spec.steerScale ?? 1)) / (1 + Math.abs(vF) / 14);
+    // Keys are all-or-nothing, so ease the wheel in, let it spring back to centre quickly,
+    // and never turn faster than the tyres could grip at this speed.
+    const want = input.steer;
+    const rate = want === 0 || want * this.steerIn < 0 ? STEER_OUT : STEER_IN;
+    this.steerIn += Math.max(-rate * dt, Math.min(rate * dt, want - this.steerIn));
+    const targetSteer = (this.steerIn * 0.6 * (spec.steerScale ?? 1)) / (1 + Math.abs(vF) / 14);
     this.steer += (targetSteer - this.steer) * Math.min(1, dt * 8);
     let yaw = (vF / spec.wheelbase) * Math.tan(this.steer);
     if (input.handbrake) yaw *= 1.5;
+    const maxYaw = ((spec.bike ? LATERAL_GRIP.bike : LATERAL_GRIP.car) * (input.handbrake ? 2 : 1)) / Math.max(Math.abs(vF), 1);
+    yaw = Math.max(-maxYaw, Math.min(maxYaw, yaw));
 
     this.vel.set(f.x * vF + r.x * vR, f.y * vF + r.y * vR);
     if (env.wind) this.vel.addScaledVector(env.wind, dt);

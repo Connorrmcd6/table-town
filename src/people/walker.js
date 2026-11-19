@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { heightAt } from '../world/heightmap.js';
-import { makePerson, animatePerson, knockDown, poseAirborne, poseRoll, poseClimb, poseVault, poseArms, poseDead } from './person.js';
+import { makePerson, animatePerson, knockDown, poseAirborne, poseRoll, poseClimb, poseVault, poseArms, poseDead, clearPose } from './person.js';
 import { vehicleCircles } from './pedestrians.js';
 
 const SPRINT = 8.5, AIM_WALK = 3.2;
@@ -72,6 +72,8 @@ export class Walker {
     this.dead = null;
     this.vy = 0;
     this.airborne = false;
+    clearPose(this.model);
+    knockDown(this.model, 0);
     this.sync(0);
   }
 

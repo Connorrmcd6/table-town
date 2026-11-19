@@ -371,7 +371,7 @@ export function poseAirborne(p, dt, vy) {
 }
 
 export function knockDown(p, amount) {
-  p.body.rotation.x = -Math.PI / 2 * amount;
+  p.body.rotation.set(-Math.PI / 2 * amount, 0, 0);
   p.body.position.set(0, 0.15 * amount, 0);
 }
 

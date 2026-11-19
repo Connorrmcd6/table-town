@@ -4,6 +4,7 @@ import { createSky } from './world/sky.js';
 import { createCity } from './world/city.js';
 import { createLandmarks } from './world/landmarks.js';
 import { createSeaboard } from './world/seaboard.js';
+import { createBlouberg } from './world/blouberg.js';
 import { createSuburbs } from './world/suburbs.js';
 import { createStreetlights } from './world/streetlights.js';
 import { districtAt, w as toWorld } from './world/heightmap.js';
@@ -85,6 +86,7 @@ function build() {
   createJunctions(scene, roads);
   const landmarks = createLandmarks(scene, city.colliders, { isSuburb: suburbs.isSuburb, roads, parks: city.blocks.filter((b) => b.park) });
   const seaboard = createSeaboard(scene, city.colliders, roads);
+  const blouberg = createBlouberg(scene, city.colliders);
   const streetlights = createStreetlights(scene, city.colliders, roads);
   const traffic = createTraffic(scene, city.colliders, [...cityEdges(), ...routeEdges(), ...suburbs.edges], 90, roads);
   const colliders = new ColliderGrid(city.colliders);
@@ -104,6 +106,7 @@ function build() {
     ...city.blocks.map((b) => ({ x0: b.x0 + 1.2, x1: b.x1 - 1.2, z0: b.z0 + 1.2, z1: b.z1 - 1.2, sidewalk: true })),
     ...suburbs.walkRects,
     ...seaboard.walkRects,
+    ...blouberg.walkRects,
   ];
   const peds = createPedestrians(scene, walkRects, 50);
   const pickups = createPickups(scene, walkRects);
@@ -117,7 +120,7 @@ function build() {
     scene.add(model.group);
     return new Car(model, toWorld(-180) + dx, showroomZ, Math.PI / 2);
   });
-  return { sky, city, suburbs, seaboard, landmarks, streetlights, colliders, vehicle, traffic, headlight, roads, walker, peds, police, parked, weapons, pickups, hospital, wrecks };
+  return { sky, city, suburbs, seaboard, blouberg, landmarks, streetlights, colliders, vehicle, traffic, headlight, roads, walker, peds, police, parked, weapons, pickups, hospital, wrecks };
 }
 
 let world;
@@ -155,6 +158,7 @@ function applyLighting() {
   city.setWindowGlow(glow);
   suburbs.setWindowGlow(glow);
   world.seaboard.setWindowGlow(glow);
+  world.blouberg.setWindowGlow(glow);
   world.streetlights.setLevel(state.loadshedding ? 0 : sky.state.lights);
   world.headlight.intensity = state.onFoot ? 0 : sky.state.lights * 90;
   renderer.toneMappingExposure = 1.2 + sky.state.night * 0.35;
@@ -719,7 +723,7 @@ function explosionDamage(at, radius, source, instant) {
     if (o === source) continue;
     const d = Math.hypot(o.pos.x - v.pos.x, o.pos.z - v.pos.z);
     if (instant && d < radius * 0.6) world.wrecks.explode(o);
-    else if (d < radius) hurtVehicle(o, 70 * (1 - d / radius));
+    else if (d < radius) hurtVehicle(o, 140 * (1 - d / radius));
   }
 }
 
@@ -845,8 +849,8 @@ function tick(dt) {
   const onImpact = (s, other) => {
     audio.crash(s);
     if (!state.onFoot && s > 11) damage((s - 11) * 1.4);
-    if (vehicle) hurtVehicle(vehicle, (s - 3) * 4);
-    if (other) hurtVehicle(other, (s - 3) * 3);
+    if (vehicle) hurtVehicle(vehicle, (s - 6) * 2.5);
+    if (other) hurtVehicle(other, (s - 6) * 2);
     if (other?.model?.type === 'police') ramPolice();
   };
   const vehicle = world.vehicle;
@@ -871,6 +875,7 @@ function tick(dt) {
   for (const [w, mesh] of Object.entries(walker.model.held)) mesh.visible = state.onFoot && !state.ride && w === current && (w !== 'c4' || weapons.state.ammo.c4 > 0);
   walker.cameraProfile = aiming ? AIM_CAMERA : FOOT_CAMERA;
   landmarks.update(sdt);
+  world.blouberg.update(sdt);
   if (state.ride) rideCable(sdt);
   else if (state.onFoot) {
     walker.update(sdt, input, chase.viewYaw, { colliders, vehicles: [...traffic.cars, ...cops, ...parked], jump: active && wasPressed('Space'), aiming });

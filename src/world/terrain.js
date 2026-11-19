@@ -1,11 +1,16 @@
 import * as THREE from 'three';
 import { heightAt, fbm, isBeach, atlanticShore, w as toWorld, WORLD_SCALE as S } from './heightmap.js';
 
-function axisLines(min, max, denseMin, denseMax, denseStep, sparseStep) {
+// Grid lines `step` apart inside each [from, to, step] band and `sparseStep` apart elsewhere.
+function axisLines(min, max, bands, sparseStep) {
   const lines = [];
-  for (let v = min; v < denseMin; v += sparseStep) lines.push(v);
-  for (let v = denseMin; v < denseMax; v += denseStep) lines.push(v);
-  for (let v = denseMax; v <= max; v += sparseStep) lines.push(v);
+  let v = min;
+  for (const [from, to, step] of bands) {
+    for (; v < from; v += sparseStep) lines.push(v);
+    for (v = from; v < to; v += step) lines.push(v);
+    v = to;
+  }
+  for (; v <= max; v += sparseStep) lines.push(v);
   return lines;
 }
 
@@ -17,8 +22,8 @@ const CLIFF = new THREE.Color('#b8a088');
 const SEABED = new THREE.Color('#6f7f6a');
 
 export function createTerrain() {
-  const xs = axisLines(-9000, 9000, toWorld(-2150), toWorld(1700), 6, 150);
-  const zs = axisLines(-9000, 9000, toWorld(-950), toWorld(2700), 6, 150);
+  const xs = axisLines(-9000, 9000, [[toWorld(-2550), toWorld(1700), 6], [toWorld(1700), toWorld(2200), 10]], 150);
+  const zs = axisLines(-9000, 9000, [[toWorld(-2950), toWorld(-950), 10], [toWorld(-950), toWorld(2700), 6]], 150);
   const nx = xs.length, nz = zs.length;
   const pos = new Float32Array(nx * nz * 3);
   const col = new Float32Array(nx * nz * 3);

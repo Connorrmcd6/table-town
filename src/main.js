@@ -1,22 +1,25 @@
 import * as THREE from 'three';
 import { createTerrain } from './world/terrain.js';
-import { createSky, TIME_ORDER } from './world/sky.js';
+import { createSky } from './world/sky.js';
 import { createCity } from './world/city.js';
 import { createLandmarks } from './world/landmarks.js';
 import { createSuburbs } from './world/suburbs.js';
-import { districtAt, heightAt } from './world/heightmap.js';
+import { createStreetlights } from './world/streetlights.js';
+import { districtAt, heightAt, w as toWorld } from './world/heightmap.js';
 import { ColliderGrid } from './collision.js';
 import { playerTaxi } from './vehicles/models.js';
 import { Car } from './vehicles/car.js';
 import { createTraffic } from './vehicles/traffic.js';
+import { cityEdges } from './world/city.js';
 import { ChaseCamera, lockPointer } from './camera.js';
 import { readDriving, wasPressed, releaseAll, endFrame } from './input.js';
 import { createCheatPrompt } from './cheats.js';
 import { createHud, streetAt } from './hud.js';
 import * as audio from './audio.js';
 
-const START = { x: -247.2, z: -330, heading: 0 };
-const PRESET_CLOCK = { golden: 17 * 60 + 30, noon: 12 * 60, night: 21 * 60 };
+const START = { x: toWorld(-180) + 2.8, z: toWorld(-230), heading: 0 };
+const START_CLOCK = 16 * 60 + 30;
+const SUNDOWNER_STOPS = [6 * 60 + 15, 12 * 60, 17 * 60 + 30, 21 * 60];
 
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -44,12 +47,17 @@ function build() {
   const city = createCity(scene);
   const suburbs = createSuburbs(scene, city.colliders);
   const landmarks = createLandmarks(scene, city.colliders, suburbs.isSuburb);
+  const streetlights = createStreetlights(scene, city.colliders);
+  const traffic = createTraffic(scene, city.colliders, [...cityEdges(), ...suburbs.edges]);
   const colliders = new ColliderGrid(city.colliders);
   const taxiModel = playerTaxi();
+  const headlight = new THREE.SpotLight('#fff1d0', 0, 80, 0.55, 0.6, 1);
+  headlight.position.set(0, 1.1, 2.5);
+  headlight.target.position.set(0, 0, 22);
+  taxiModel.group.add(headlight, headlight.target);
   scene.add(taxiModel.group);
   const player = new Car(taxiModel, START.x, START.z, START.heading);
-  const traffic = createTraffic(scene);
-  return { sky, city, suburbs, landmarks, colliders, player, traffic };
+  return { sky, city, suburbs, landmarks, streetlights, colliders, player, traffic, headlight };
 }
 
 let world;
@@ -57,7 +65,7 @@ const hud = createHud();
 const chase = new ChaseCamera(camera, canvas);
 const state = {
   cash: 350,
-  minutes: PRESET_CLOCK.golden,
+  minutes: START_CLOCK,
   timeScale: 1,
   boost: 1,
   windOn: false,
@@ -71,6 +79,8 @@ function applyLighting() {
   const glow = state.loadshedding ? 0 : sky.state.windows;
   city.setWindowGlow(glow);
   suburbs.setWindowGlow(glow);
+  world.streetlights.setLevel(state.loadshedding ? 0 : sky.state.lights);
+  world.headlight.intensity = sky.state.lights * 90;
 }
 
 function applyCheat(cheat) {
@@ -80,9 +90,8 @@ function applyCheat(cheat) {
   switch (cheat.code) {
     case 'LOADSHEDDING':
       state.loadshedding = !state.loadshedding;
-      sky.apply(state.loadshedding ? 'night' : 'golden');
-      state.minutes = PRESET_CLOCK[sky.state.preset];
-      if (state.loadshedding) hud.say('Eskom has implemented stage 6. Sorry for the inconvenience.', 4);
+      if (state.loadshedding && sky.state.night < 0.5) state.minutes = Math.floor(state.minutes / 1440) * 1440 + 21 * 60;
+      if (state.loadshedding) hud.say('Stage 6. The robots are out, drive safe.', 4);
       break;
     case 'SOUTHEASTER':
       state.windOn = !state.windOn;
@@ -101,10 +110,10 @@ function applyCheat(cheat) {
       state.boost = state.boost === 1 ? 1.9 : 1;
       break;
     case 'SUNDOWNER': {
-      const next = TIME_ORDER[(TIME_ORDER.indexOf(sky.state.preset) + 1) % TIME_ORDER.length];
-      state.loadshedding = false;
-      sky.apply(next);
-      state.minutes = PRESET_CLOCK[next];
+      const day = Math.floor(state.minutes / 1440) * 1440;
+      const now = state.minutes - day;
+      const next = SUNDOWNER_STOPS.find((m) => m > now + 1);
+      state.minutes = next === undefined ? day + 1440 + SUNDOWNER_STOPS[0] : day + next;
       break;
     }
     case 'LEKKER':
@@ -159,12 +168,13 @@ function tick(dt) {
 
   const onImpact = (s) => audio.crash(s);
   player.update(sdt, input, { colliders, boost: state.boost, wind: state.windOn ? wind : null, onImpact });
-  traffic.update(sdt, player, onImpact);
+  traffic.update(sdt, player, onImpact, { signalsOff: state.loadshedding, lights: world.sky.state.lights });
   landmarks.update(sdt);
   chase.update(dt, player);
-  sky.follow(player.pos);
-
   state.minutes += sdt;
+  sky.setTime(state.minutes);
+  applyLighting();
+  sky.follow(player.pos);
   audio.updateEngine(player.speed, input.throttle);
   const area = districtAt(player.pos.x, player.pos.z, player.pos.y);
   streetTimer -= dt;
@@ -197,6 +207,8 @@ function start() {
 
 setTimeout(() => {
   world = build();
+  world.sky.setTime(state.minutes);
+  world.sky.follow(world.player.pos);
   applyLighting();
   chase.update(0, world.player, true);
   startEl.textContent = 'Press Enter or click to start';

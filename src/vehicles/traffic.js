@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { heightAt } from '../world/heightmap.js';
-import { GRID_X, GRID_Z } from '../world/city.js';
+import { GRID_X, GRID_Z, CBD_EDGE } from '../world/city.js';
 import { makeVehicle, setBrakeLights } from './models.js';
 
-const LANE = 2.8;
-const STOP_BACK = 9;
+const CYCLE = 32;
+const NS_GREEN = 13, NS_AMBER = 16, EW_GREEN = 29;
 
 let seed = 777;
 function rand() {
@@ -12,25 +12,59 @@ function rand() {
   return (seed - 1) / 2147483646;
 }
 
-const node = (i, j) => ({ i, j, x: GRID_X[i], z: GRID_Z[j] });
+const keyOf = (x, z) => `${Math.round(x * 10)},${Math.round(z * 10)}`;
+const laneFor = (width) => Math.max(1.8, Math.min(3.2, width / 4));
 
-function neighbours(n) {
-  const out = [];
-  if (n.i > 0) out.push(node(n.i - 1, n.j));
-  if (n.i < GRID_X.length - 1) out.push(node(n.i + 1, n.j));
-  if (n.j > 0) out.push(node(n.i, n.j - 1));
-  if (n.j < GRID_Z.length - 1) out.push(node(n.i, n.j + 1));
-  return out;
+function buildGraph(edges) {
+  const nodes = new Map();
+  const node = ([x, z]) => {
+    const k = keyOf(x, z);
+    if (!nodes.has(k)) nodes.set(k, { key: k, x, z, nbrs: [], signal: null });
+    return nodes.get(k);
+  };
+  const list = [];
+  for (const e of edges) {
+    const a = node(e.a), b = node(e.b);
+    if (a.nbrs.some((n) => n.node === b)) continue;
+    a.nbrs.push({ node: b, width: e.width });
+    b.nbrs.push({ node: a, width: e.width });
+    list.push({ a, b, width: e.width });
+  }
+  for (const n of nodes.values()) n.stopBack = Math.max(...n.nbrs.map((e) => e.width)) / 2 + 2.5;
+  return { nodes, list };
 }
 
-// Keep-left: lane offset is to the left of travel direction.
-function lanePoint(from, to, t, back = 0) {
+const isCityLine = (arr, v) => arr.some((g) => Math.abs(g - v) < 0.05);
+
+function addSignals(nodes) {
+  const signalled = [];
+  for (const n of nodes.values()) {
+    if (n.nbrs.length < 3 || n.x < CBD_EDGE - 0.05) continue;
+    if (!isCityLine(GRID_X, n.x) || !isCityLine(GRID_Z, n.z)) continue;
+    n.signal = { offset: (GRID_X.findIndex((g) => Math.abs(g - n.x) < 0.05) * 3 + GRID_Z.findIndex((g) => Math.abs(g - n.z) < 0.05) * 5) % CYCLE };
+    signalled.push(n);
+  }
+  return signalled;
+}
+
+function signalAt(node, axis, time) {
+  const t = (time + node.signal.offset) % CYCLE;
+  if (axis === 'ns') return t < NS_GREEN ? 'green' : t < NS_AMBER ? 'amber' : 'red';
+  return t < NS_AMBER ? 'red' : t < EW_GREEN ? 'green' : 'amber';
+}
+
+const axisOf = (from, to) => (Math.abs(from.x - to.x) < 0.05 ? 'ns' : 'ew');
+
+// Keep-left: lane offset is to the left of the direction of travel.
+function lanePoint(from, to, dist, lane) {
   let dx = to.x - from.x, dz = to.z - from.z;
   const len = Math.hypot(dx, dz);
   dx /= len; dz /= len;
-  const d = t * len - back;
-  return { x: from.x + dx * d + dz * LANE, z: from.z + dz * d - dx * LANE };
+  const d = dist < 0 ? len + dist : dist;
+  return { x: from.x + dx * d + dz * lane, z: from.z + dz * d - dx * lane };
 }
+
+const edgeWidth = (a, b) => a.nbrs.find((n) => n.node === b)?.width ?? 8;
 
 class AICar {
   constructor(model, from, to) {
@@ -38,59 +72,67 @@ class AICar {
     this.spec = model.spec;
     this.from = from;
     this.to = to;
-    this.prev = null;
     this.waypoints = [];
     this.pos = new THREE.Vector3();
     this.knock = new THREE.Vector2();
     this.speed = 0;
     this.cruise = 9 + rand() * 6;
     this.frozen = false;
-    const start = lanePoint(from, to, 0.2 + rand() * 0.5);
+    const len = Math.hypot(to.x - from.x, to.z - from.z);
+    const start = lanePoint(from, to, len * (0.2 + rand() * 0.5), laneFor(edgeWidth(from, to)));
     this.pos.set(start.x, heightAt(start.x, start.z), start.z);
     this.heading = Math.atan2(to.x - from.x, to.z - from.z);
     this.planNext();
   }
 
   planNext() {
-    const options = neighbours(this.to).filter((n) => !(n.i === this.from.i && n.j === this.from.j));
+    const options = this.to.nbrs.map((n) => n.node).filter((n) => n !== this.from);
     const next = options.length ? options[Math.floor(rand() * options.length)] : this.from;
-    const arrive = lanePoint(this.from, this.to, 1, STOP_BACK);
-    const leave = lanePoint(this.to, next, 0, -STOP_BACK);
+    const inLane = laneFor(edgeWidth(this.from, this.to));
+    const outLane = laneFor(edgeWidth(this.to, next));
+    const arrive = lanePoint(this.from, this.to, -this.to.stopBack, inLane);
+    const leave = lanePoint(this.to, next, this.to.stopBack, outLane);
     const mid = {
       x: (arrive.x + leave.x) / 2 + (this.to.x - (arrive.x + leave.x) / 2) * 0.35,
       z: (arrive.z + leave.z) / 2 + (this.to.z - (arrive.z + leave.z) / 2) * 0.35,
     };
+    arrive.stopAt = this.to;
+    arrive.axis = axisOf(this.from, this.to);
     this.waypoints.push(arrive, mid, leave);
-    this.prev = this.from;
     this.from = this.to;
     this.to = next;
   }
 
-  update(dt, others, player) {
+  holdFor(wp, dist, env) {
+    const n = wp.stopAt;
+    if (!n || !n.signal || env.signalsOff) return false;
+    const s = signalAt(n, wp.axis, env.time);
+    return s === 'red' || (s === 'amber' && dist > 9);
+  }
+
+  update(dt, others, player, env) {
     if (this.frozen) return;
-    const target = this.waypoints[0];
-    let dx = target.x - this.pos.x, dz = target.z - this.pos.z;
-    const dist = Math.hypot(dx, dz);
-    if (dist < 2.5) {
+    let target = this.waypoints[0];
+    let dist = Math.hypot(target.x - this.pos.x, target.z - this.pos.z);
+    let held = this.holdFor(target, dist, env);
+    for (let guard = 0; dist < 2.5 && !held && guard < 4; guard++) {
       this.waypoints.shift();
       if (this.waypoints.length < 2) this.planNext();
-      return this.update(dt, others, player);
+      target = this.waypoints[0];
+      dist = Math.hypot(target.x - this.pos.x, target.z - this.pos.z);
+      held = this.holdFor(target, dist, env);
     }
-    const want = Math.atan2(dx, dz);
-    let diff = want - this.heading;
+    const dx = target.x - this.pos.x, dz = target.z - this.pos.z;
+    let diff = Math.atan2(dx, dz) - this.heading;
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-    this.heading += Math.max(-1.6 * dt, Math.min(1.6 * dt, diff * 3 * dt));
+    if (dist > 1) this.heading += Math.max(-1.6 * dt, Math.min(1.6 * dt, diff * 3 * dt));
 
     let limit = this.cruise * (Math.abs(diff) > 0.4 ? 0.45 : 1);
+    if (held) limit = Math.min(limit, Math.max(0, (dist - 1.2) * 1.3));
+    if (env.signalsOff && target.stopAt?.signal && dist < 15) limit = Math.min(limit, 5);
     const fx = Math.sin(this.heading), fz = Math.cos(this.heading);
-    const blockers = [...others, player];
-    for (const o of blockers) {
-      if (o === this) continue;
-      const ox = o.pos.x - this.pos.x, oz = o.pos.z - this.pos.z;
-      const along = ox * fx + oz * fz;
-      const side = Math.abs(ox * fz - oz * fx);
-      if (along > 0 && along < 14 && side < 2.4) limit = Math.min(limit, Math.max(0, (along - 6) * 1.2));
-    }
+    for (const o of others) this.yieldTo(o, fx, fz, (v) => { limit = Math.min(limit, v); });
+    this.yieldTo(player, fx, fz, (v) => { limit = Math.min(limit, v); });
     setBrakeLights(this.model, limit < this.speed - 0.5 || (this.speed < 0.5 && limit < 0.5));
     this.speed += Math.max(-12 * dt, Math.min(4 * dt, limit - this.speed));
     this.pos.x += fx * this.speed * dt + this.knock.x * dt;
@@ -98,6 +140,15 @@ class AICar {
     this.knock.multiplyScalar(Math.exp(-3 * dt));
     this.pos.y = heightAt(this.pos.x, this.pos.z);
     this.sync(dt);
+  }
+
+  yieldTo(o, fx, fz, cap) {
+    if (o === this) return;
+    const ox = o.pos.x - this.pos.x, oz = o.pos.z - this.pos.z;
+    if (Math.abs(ox) > 16 || Math.abs(oz) > 16) return;
+    const along = ox * fx + oz * fz;
+    const side = Math.abs(ox * fz - oz * fx);
+    if (along > 0 && along < 14 && side < 2.4) cap(Math.max(0, (along - 6) * 1.2));
   }
 
   sync(dt) {
@@ -113,32 +164,104 @@ class AICar {
   }
 }
 
-export function createTraffic(scene, count = 34) {
+function glowTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.5, 'rgba(255,255,255,0.45)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+}
+
+export const GLOW_TEXTURE = glowTexture();
+
+export function glowMaterial(color) {
+  return new THREE.MeshBasicMaterial({
+    map: GLOW_TEXTURE, color, transparent: true, opacity: 0, depthWrite: false,
+    blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
+  });
+}
+
+function createRobots(scene, colliders, signalled) {
+  const heads = [];
+  for (const n of signalled) {
+    const cross = n.stopBack - 2.5;
+    for (const { node: from, width } of n.nbrs) {
+      let dx = n.x - from.x, dz = n.z - from.z;
+      const len = Math.hypot(dx, dz);
+      dx /= len; dz /= len;
+      const x = n.x - dx * (cross + 1.4) + dz * (width / 2 + 1.0);
+      const z = n.z - dz * (cross + 1.4) - dx * (width / 2 + 1.0);
+      heads.push({ node: n, axis: axisOf(from, n), x, z, rot: Math.atan2(-dx, -dz) });
+      colliders.push({ minX: x - 0.2, maxX: x + 0.2, minZ: z - 0.2, maxZ: z + 0.2 });
+    }
+  }
+  const poleGeo = new THREE.CylinderGeometry(0.08, 0.1, 3.4, 6).translate(0, 1.7, 0);
+  const boxGeo = new THREE.BoxGeometry(0.55, 1.45, 0.3).translate(0, 3.4, 0);
+  const lampGeo = new THREE.BoxGeometry(0.34, 0.34, 0.04);
+  const poles = new THREE.InstancedMesh(poleGeo, new THREE.MeshLambertMaterial({ color: '#3a3d40' }), heads.length);
+  const boxes = new THREE.InstancedMesh(boxGeo, new THREE.MeshLambertMaterial({ color: '#1c1e20' }), heads.length);
+  const lampMat = new THREE.MeshBasicMaterial({ color: '#ffffff' });
+  const lamps = ['red', 'amber', 'green'].map(() => new THREE.InstancedMesh(lampGeo, lampMat, heads.length));
+  const m = new THREE.Matrix4(), off = new THREE.Matrix4();
+  heads.forEach((h, i) => {
+    m.makeRotationY(h.rot).setPosition(h.x, heightAt(h.x, h.z), h.z);
+    poles.setMatrixAt(i, m);
+    boxes.setMatrixAt(i, m);
+    [0.44, 0, -0.44].forEach((dy, k) => lamps[k].setMatrixAt(i, off.copy(m).multiply(new THREE.Matrix4().makeTranslation(0, 3.4 + dy, 0.17))));
+  });
+  poles.castShadow = boxes.castShadow = true;
+  scene.add(poles, boxes, ...lamps);
+  for (const l of lamps) l.setColorAt(0, new THREE.Color());
+
+  const ON = [new THREE.Color('#ff2a1a'), new THREE.Color('#ffb020'), new THREE.Color('#30ff70')];
+  const OFF = [new THREE.Color('#3a0c08'), new THREE.Color('#3a2808'), new THREE.Color('#0a3014')];
+  const ORDER = { red: 0, amber: 1, green: 2 };
+  return (time, off) => {
+    heads.forEach((h, i) => {
+      const lit = off ? -1 : ORDER[signalAt(h.node, h.axis, time)];
+      for (let k = 0; k < 3; k++) lamps[k].setColorAt(i, k === lit ? ON[k] : OFF[k]);
+    });
+    for (const l of lamps) l.instanceColor.needsUpdate = true;
+  };
+}
+
+export function createTraffic(scene, colliders, edges, count = 80) {
+  const { nodes, list } = buildGraph(edges);
+  const updateRobots = createRobots(scene, colliders, addSignals(nodes));
+  const cityEdges = list.filter((e) => e.width >= 10);
   const cars = [];
-  const types = ['golf', 'golf', 'golf', 'taxi', 'taxi', 'bakkie', 'bakkie', 'police'];
+  const types = ['golf', 'golf', 'golf', 'taxi', 'taxi', 'bakkie', 'bakkie', 'police', 'golf', 'taxi'];
   for (let k = 0; k < count; k++) {
-    const i = Math.floor(rand() * GRID_X.length);
-    const j = Math.floor(rand() * GRID_Z.length);
-    const from = node(i, j);
-    const opts = neighbours(from);
-    const to = opts[Math.floor(rand() * opts.length)];
+    const pool = k % 2 === 0 ? cityEdges : list;
+    const e = pool[Math.floor(rand() * pool.length)];
+    const [from, to] = rand() < 0.5 ? [e.a, e.b] : [e.b, e.a];
     const model = makeVehicle(types[k % types.length], rand);
     scene.add(model.group);
     cars.push(new AICar(model, from, to));
   }
 
+  const pools = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), glowMaterial('#ffe2a8'), cars.length);
+  pools.frustumCulled = false;
+  scene.add(pools);
+  const pm = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+  const pScale = new THREE.Vector3(5, 1, 10), pPos = new THREE.Vector3();
+
   function collidePlayer(player, onImpact) {
     for (const c of cars) {
       const dx = player.pos.x - c.pos.x, dz = player.pos.z - c.pos.z;
       const minD = (player.spec.length + c.spec.length) / 2 - 0.8;
-      const d = Math.hypot(dx, dz);
-      if (d > minD + 3) continue;
+      if (Math.hypot(dx, dz) > minD + 3) continue;
       for (const pc of player.circles()) {
         const ex = pc.x - c.pos.x, ez = pc.z - c.pos.z;
         const fx = Math.sin(c.heading), fz = Math.cos(c.heading);
-        const along = Math.max(-c.spec.length / 2 + c.spec.width / 2, Math.min(c.spec.length / 2 - c.spec.width / 2, ex * fx + ez * fz));
-        const qx = c.pos.x + fx * along, qz = c.pos.z + fz * along;
-        const nx = pc.x - qx, nz = pc.z - qz;
+        const half = c.spec.length / 2 - c.spec.width / 2;
+        const along = Math.max(-half, Math.min(half, ex * fx + ez * fz));
+        const nx = pc.x - (c.pos.x + fx * along), nz = pc.z - (c.pos.z + fz * along);
         const nd = Math.hypot(nx, nz);
         const rr = pc.r + c.spec.width / 2;
         if (nd >= rr || nd < 1e-4) continue;
@@ -161,14 +284,33 @@ export function createTraffic(scene, count = 34) {
     }
   }
 
+  let time = 0;
   return {
     cars,
+    get time() {
+      return time;
+    },
     setFrozen(v) {
       for (const c of cars) c.frozen = v;
     },
-    update(dt, player, onImpact) {
-      for (const c of cars) c.update(dt, cars, player);
+    update(dt, player, onImpact, { signalsOff = false, lights = 0 } = {}) {
+      time += dt;
+      const env = { time, signalsOff };
+      for (const c of cars) c.update(dt, cars, player, env);
       collidePlayer(player, onImpact);
+      updateRobots(time, signalsOff);
+      pools.material.opacity = lights * 0.75;
+      pools.visible = lights > 0.01;
+      if (pools.visible) {
+        cars.forEach((c, i) => {
+          const fx = Math.sin(c.heading), fz = Math.cos(c.heading);
+          const x = c.pos.x + fx * 7.5, z = c.pos.z + fz * 7.5;
+          pPos.set(x, heightAt(x, z) + 0.3, z);
+          q.setFromAxisAngle(up, c.heading);
+          pools.setMatrixAt(i, pm.compose(pPos, q, pScale));
+        });
+        pools.instanceMatrix.needsUpdate = true;
+      }
     },
   };
 }

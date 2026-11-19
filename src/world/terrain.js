@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { heightAt, fbm } from './heightmap.js';
+import { heightAt, fbm, w as toWorld, WORLD_SCALE as S } from './heightmap.js';
 
 function axisLines(min, max, denseMin, denseMax, denseStep, sparseStep) {
   const lines = [];
@@ -17,8 +17,8 @@ const CLIFF = new THREE.Color('#b8a088');
 const SEABED = new THREE.Color('#6f7f6a');
 
 export function createTerrain() {
-  const xs = axisLines(-9000, 9000, -1700, 1700, 8, 150);
-  const zs = axisLines(-9000, 9000, -950, 2700, 8, 150);
+  const xs = axisLines(-9000, 9000, toWorld(-1700), toWorld(1700), 6, 150);
+  const zs = axisLines(-9000, 9000, toWorld(-950), toWorld(2700), 6, 150);
   const nx = xs.length, nz = zs.length;
   const pos = new Float32Array(nx * nz * 3);
   const col = new Float32Array(nx * nz * 3);
@@ -56,9 +56,9 @@ export function createTerrain() {
     if (h < 0) c.copy(SEABED);
     else if (h < 3.5) c.copy(SAND);
     else {
-      c.copy(GRASS).lerp(FYNBOS, Math.min(1, h / 400 + n * 0.5));
+      c.copy(GRASS).lerp(FYNBOS, Math.min(1, h / (400 * S) + n * 0.5));
       if (slope > 0.25) c.lerp(ROCK, Math.min(1, (slope - 0.25) * 3));
-      if (h > 650 && slope > 0.35) c.lerp(CLIFF, 0.8);
+      if (h > 650 * S && slope > 0.35) c.lerp(CLIFF, 0.8);
     }
     c.multiplyScalar(0.88 + n * 0.24);
     col[k * 3] = c.r;

@@ -28,11 +28,34 @@ export function fbm(x, z, octaves = 4) {
   return sum / norm;
 }
 
-export const CITY = { minX: -470, maxX: 510, minZ: -490, maxZ: 230 };
-export const LIONS_HEAD = { x: -1500, z: 1100 };
-export const KLOOF_NEK = { x: -650, z: 1000 };
+// Map is authored in "map metres" and condensed by WORLD_SCALE; vehicles and buildings stay real size.
+export const WORLD_SCALE = 0.65;
+const S = WORLD_SCALE;
+export const w = (v) => v * S;
+const scalePoint = (p) => ({ x: w(p.x), z: w(p.z) });
+
+const RAW_CITY = { minX: -470, maxX: 510, minZ: -490, maxZ: 230 };
+const RAW_LIONS_HEAD = { x: -1500, z: 1100 };
+const RAW_KLOOF_NEK = { x: -650, z: 1000 };
+const RAW_DISA_PARK = { x: 760, z: 950 };
+export const CITY = { minX: w(RAW_CITY.minX), maxX: w(RAW_CITY.maxX), minZ: w(RAW_CITY.minZ), maxZ: w(RAW_CITY.maxZ) };
+export const LIONS_HEAD = scalePoint(RAW_LIONS_HEAD);
+export const KLOOF_NEK = scalePoint(RAW_KLOOF_NEK);
+export const DISA_PARK = scalePoint(RAW_DISA_PARK);
 
 export function coastDistance(x, z) {
+  return rawCoast(x / S, z / S) * S;
+}
+
+export function heightAt(x, z) {
+  return rawHeight(x / S, z / S) * S;
+}
+
+export function districtAt(x, z, h) {
+  return rawDistrict(x / S, z / S, h / S);
+}
+
+function rawCoast(x, z) {
   const bay = z - (-600 + 60 * Math.sin(x * 0.003));
   const atlantic = x - (-1900 + 150 * Math.sin(z * 0.002));
   const quay = Math.min(z + 900, 1200 - x, x - 380);
@@ -50,7 +73,7 @@ function tableMountain(x, z) {
 
 // Rocky dome head on a shoulder, with the body ridge running north-east to Signal Hill.
 function lionsHead(x, z) {
-  const dx = x - LIONS_HEAD.x, dz = z - LIONS_HEAD.z;
+  const dx = x - RAW_LIONS_HEAD.x, dz = z - RAW_LIONS_HEAD.z;
   const r = Math.hypot(dx, dz);
   const u = dx * 0.27 - dz * 0.96;
   const v = dx * 0.96 + dz * 0.27;
@@ -70,7 +93,7 @@ function signalHill(x, z) {
 }
 
 function kloofNek(x, z) {
-  return 120 * Math.exp(-(((x - KLOOF_NEK.x) / 380) ** 2) - ((z - KLOOF_NEK.z) / 260) ** 2);
+  return 120 * Math.exp(-(((x - RAW_KLOOF_NEK.x) / 380) ** 2) - ((z - RAW_KLOOF_NEK.z) / 260) ** 2);
 }
 
 function devilsPeak(x, z) {
@@ -79,13 +102,13 @@ function devilsPeak(x, z) {
 }
 
 function cityFlatness(x, z) {
-  const ox = Math.max(CITY.minX - x, x - CITY.maxX, 0);
-  const oz = Math.max(CITY.minZ - z, z - CITY.maxZ, 0);
+  const ox = Math.max(RAW_CITY.minX - x, x - RAW_CITY.maxX, 0);
+  const oz = Math.max(RAW_CITY.minZ - z, z - RAW_CITY.maxZ, 0);
   return 1 - smoothstep(0, 250, Math.hypot(ox, oz));
 }
 
-export function heightAt(x, z) {
-  const d = coastDistance(x, z);
+function rawHeight(x, z) {
+  const d = rawCoast(x, z);
   let h = d > 0 ? Math.min(d * 0.035, 60) : Math.max(d * 0.08, -25);
   if (d > 0 && x > 380 && x < 1200 && z < -560) h = Math.max(h, 2.5);
   const westRise = clamp((-150 - x) * 0.1, 0, 70) * smoothstep(-700, -400, z);
@@ -102,19 +125,19 @@ export function heightAt(x, z) {
 }
 
 export const SEA_LEVEL = 0;
-export const DISA_PARK = { x: 760, z: 950 };
 
-export function districtAt(x, z, h) {
+function rawDistrict(x, z, h) {
   if (h > 900) return 'Table Mountain';
   if (Math.hypot(x + 1500, z - 1100) < 650) return "Lion's Head";
   if (Math.hypot(x + 1150, z + 150) < 700 && h > 120) return 'Signal Hill';
   if (Math.hypot(x + 650, z - 1000) < 300) return 'Kloof Nek';
-  if (Math.hypot(x - DISA_PARK.x, z - DISA_PARK.z) < 140) return 'Disa Park';
+  if (Math.hypot(x - RAW_DISA_PARK.x, z - RAW_DISA_PARK.z) < 140) return 'Disa Park';
   if (x > 380 && x < 1200 && z < -560) return 'Duncan Dock';
   if (h > 250 && z > 1500) return 'Tafelberg Road';
   if (z < -500 && x >= -470 && x < 1200) return 'Foreshore';
-  if (x >= -330 && x <= -95 && z >= -390 && z <= 30) return 'Bo-Kaap';
-  if (x >= -470 && x < -95 && z < -390) return 'De Waterkant';
+  if (x >= -260 && x <= -95 && z >= -290 && z <= 30) return 'Bo-Kaap';
+  if (x >= -470 && x < -95 && z < -290) return 'De Waterkant';
+  if (x >= -470 && x < -95 && z < 230) return 'Schotsche Kloof';
   if (x >= -100 && x <= 510 && z < 230) return 'City Bowl';
   if (x < -1300) return 'Sea Point';
   if (x < -470 && z < 300) return 'Green Point';

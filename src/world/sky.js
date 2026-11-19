@@ -1,51 +1,58 @@
 import * as THREE from 'three';
 
-const PRESETS = {
-  golden: {
-    sunDir: [-0.92, 0.12, -0.36],
-    zenith: '#6f93c4',
-    horizon: '#f2b56b',
-    sunGlow: '#ffb347',
-    fog: '#e8b07a',
-    fogDensity: 0.00016,
-    sun: '#ffb070',
-    sunIntensity: 3.8,
-    hemiSky: '#ffe2bf',
-    hemiGround: '#8a7558',
-    hemiIntensity: 1.9,
-    windows: 0.15,
-  },
-  noon: {
-    sunDir: [-0.3, 0.85, 0.35],
-    zenith: '#3f7fd6',
-    horizon: '#b9d5ee',
-    sunGlow: '#fff4d6',
-    fog: '#c3d6e6',
-    fogDensity: 0.00012,
-    sun: '#fff6e8',
-    sunIntensity: 3.0,
-    hemiSky: '#d6e8ff',
-    hemiGround: '#7a6a52',
-    hemiIntensity: 1.2,
-    windows: 0,
-  },
-  night: {
-    sunDir: [0.4, 0.55, -0.6],
-    zenith: '#050a1a',
-    horizon: '#1c2440',
-    sunGlow: '#3a4a70',
-    fog: '#141a2c',
-    fogDensity: 0.0002,
-    sun: '#8fa6d8',
-    sunIntensity: 0.35,
-    hemiSky: '#38466e',
-    hemiGround: '#141418',
-    hemiIntensity: 0.8,
-    windows: 0.75,
-  },
+const NIGHT = {
+  zenith: '#050a1a', horizon: '#1c2440', sunGlow: '#3a4a70', fog: '#141a2c', fogDensity: 0.0002,
+  sun: '#8fa6d8', sunIntensity: 0.45, hemiSky: '#3e4c78', hemiGround: '#18181c', hemiIntensity: 1.1,
+  windows: 0.5, stars: 1,
+};
+const DAWN = {
+  zenith: '#4a5f8f', horizon: '#f0a07a', sunGlow: '#ff9a6a', fog: '#c99a8a', fogDensity: 0.00018,
+  sun: '#ffa27a', sunIntensity: 2.2, hemiSky: '#e8c4b4', hemiGround: '#5a4a44', hemiIntensity: 1.3,
+  windows: 0.3, stars: 0,
+};
+const MORNING = {
+  zenith: '#5a8cd0', horizon: '#cfe0ee', sunGlow: '#fff0d0', fog: '#cfdbe6', fogDensity: 0.00013,
+  sun: '#fff0dc', sunIntensity: 3.0, hemiSky: '#dfeaff', hemiGround: '#7a6a52', hemiIntensity: 1.3,
+  windows: 0, stars: 0,
+};
+const NOON = {
+  zenith: '#3f7fd6', horizon: '#b9d5ee', sunGlow: '#fff4d6', fog: '#c3d6e6', fogDensity: 0.00012,
+  sun: '#fff6e8', sunIntensity: 3.0, hemiSky: '#d6e8ff', hemiGround: '#7a6a52', hemiIntensity: 1.2,
+  windows: 0, stars: 0,
+};
+const GOLDEN = {
+  zenith: '#6f93c4', horizon: '#f2b56b', sunGlow: '#ffb347', fog: '#e8b07a', fogDensity: 0.00016,
+  sun: '#ffb070', sunIntensity: 3.8, hemiSky: '#ffe2bf', hemiGround: '#8a7558', hemiIntensity: 1.9,
+  windows: 0.15, stars: 0,
+};
+const DUSK = {
+  zenith: '#2a3260', horizon: '#c86a5a', sunGlow: '#ff7a50', fog: '#7a5a68', fogDensity: 0.00018,
+  sun: '#ff8a60', sunIntensity: 1.2, hemiSky: '#8a6a8a', hemiGround: '#2a2228', hemiIntensity: 1.0,
+  windows: 0.6, stars: 0.3,
 };
 
-export const TIME_ORDER = ['golden', 'noon', 'night'];
+const h = (hours) => hours * 60;
+const KEYS = [
+  [h(0), NIGHT], [h(5.2), NIGHT], [h(6.2), DAWN], [h(7.5), MORNING], [h(12), NOON], [h(15.5), NOON],
+  [h(17.5), GOLDEN], [h(18.8), DUSK], [h(19.8), NIGHT], [h(24), NIGHT],
+];
+const COLOR_KEYS = ['zenith', 'horizon', 'sunGlow', 'fog', 'sun', 'hemiSky', 'hemiGround'];
+const NUM_KEYS = ['fogDensity', 'sunIntensity', 'hemiIntensity', 'windows', 'stars'];
+const MOON_DIR = new THREE.Vector3(0.4, 0.55, -0.6).normalize();
+const SUNRISE = h(6), SUNSET = h(18.6);
+
+const parsed = KEYS.map(([t, p]) => {
+  const o = { t };
+  for (const k of COLOR_KEYS) o[k] = new THREE.Color(p[k]);
+  for (const k of NUM_KEYS) o[k] = p[k];
+  return o;
+});
+
+// Sun rises in the east (+x), crosses to the north (-z) at noon, sets over the Atlantic (-x).
+export function sunDirection(minutes, out = new THREE.Vector3()) {
+  const a = ((minutes - SUNRISE) / (SUNSET - SUNRISE)) * Math.PI;
+  return out.set(Math.cos(a), Math.sin(a) * 0.85, -0.35 - 0.3 * Math.max(0, Math.sin(a))).normalize();
+}
 
 export function createSky(scene) {
   const uniforms = {
@@ -110,34 +117,47 @@ export function createSky(scene) {
   scene.add(sun.target);
   scene.fog = new THREE.FogExp2(0xffffff, 0.0002);
 
-  const state = { preset: 'golden', sunDir: new THREE.Vector3(), windows: 0, loadshedding: false };
+  const state = { minutes: 0, lightDir: new THREE.Vector3(), windows: 0, night: 0, lights: 0 };
+  const sunDir = new THREE.Vector3();
 
-  function apply(name) {
-    const p = PRESETS[name];
-    state.preset = name;
-    state.sunDir.set(...p.sunDir).normalize();
-    uniforms.zenith.value.set(p.zenith);
-    uniforms.horizon.value.set(p.horizon);
-    uniforms.sunGlow.value.set(p.sunGlow);
-    uniforms.sunDir.value.copy(state.sunDir);
-    uniforms.stars.value = name === 'night' ? 1 : 0;
-    scene.fog.color.set(p.fog);
-    scene.fog.density = p.fogDensity;
-    sun.color.set(p.sun);
-    sun.intensity = p.sunIntensity;
-    hemi.color.set(p.hemiSky);
-    hemi.groundColor.set(p.hemiGround);
-    hemi.intensity = p.hemiIntensity;
-    state.windows = p.windows;
+  function setTime(minutes) {
+    const t = ((minutes % 1440) + 1440) % 1440;
+    state.minutes = t;
+    let i = 0;
+    while (i < parsed.length - 2 && parsed[i + 1].t <= t) i++;
+    const a = parsed[i], b = parsed[i + 1];
+    const k = (t - a.t) / (b.t - a.t);
+    const lerpC = (key, target) => target.copy(a[key]).lerp(b[key], k);
+    const lerpN = (key) => a[key] + (b[key] - a[key]) * k;
+
+    lerpC('zenith', uniforms.zenith.value);
+    lerpC('horizon', uniforms.horizon.value);
+    lerpC('sunGlow', uniforms.sunGlow.value);
+    lerpC('fog', scene.fog.color);
+    lerpC('sun', sun.color);
+    lerpC('hemiSky', hemi.color);
+    lerpC('hemiGround', hemi.groundColor);
+    scene.fog.density = lerpN('fogDensity');
+    sun.intensity = lerpN('sunIntensity');
+    hemi.intensity = lerpN('hemiIntensity');
+    uniforms.stars.value = lerpN('stars');
+    state.windows = lerpN('windows');
+
+    sunDirection(t, sunDir);
+    uniforms.sunDir.value.copy(sunDir);
+    const day = THREE.MathUtils.smoothstep(sunDir.y, -0.08, 0.06);
+    state.night = 1 - day;
+    state.lights = 1 - THREE.MathUtils.smoothstep(sunDir.y, 0.0, 0.16);
+    state.lightDir.copy(MOON_DIR).lerp(sunDir, day).normalize();
   }
-  apply('golden');
+  setTime(h(17.5));
 
   function follow(target) {
     sky.position.copy(target);
     sun.target.position.copy(target);
-    sun.position.copy(target).addScaledVector(state.sunDir, 700);
+    sun.position.copy(target).addScaledVector(state.lightDir, 700);
     sun.target.updateMatrixWorld();
   }
 
-  return { state, apply, follow, sun, uniforms };
+  return { state, setTime, follow, sun, uniforms };
 }

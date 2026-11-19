@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const matCache = new Map();
 function mat(kind, color, emissive) {
@@ -66,23 +67,47 @@ function polygon(points) {
   return s;
 }
 
-const wheelGeo = new THREE.CylinderGeometry(1, 1, 1, 14);
-wheelGeo.rotateZ(Math.PI / 2);
+const FLAT = new THREE.MeshLambertMaterial({ vertexColors: true });
+const LAMP = new THREE.MeshBasicMaterial({ vertexColors: true });
+
+// Bakes a mesh's transform (and optional flat colour) into a non-indexed geometry with only the given attributes.
+function strip(src, matrix, attrs, color) {
+  const g = (src.index ? src.toNonIndexed() : src.clone()).applyMatrix4(matrix);
+  const out = new THREE.BufferGeometry();
+  for (const a of attrs) out.setAttribute(a, g.getAttribute(a));
+  if (color) {
+    const n = g.getAttribute('position').count;
+    const c = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) color.toArray(c, i * 3);
+    out.setAttribute('color', new THREE.BufferAttribute(c, 3));
+  }
+  return out;
+}
+
+const wheelCache = new Map();
+function wheelGeometry(radius, tyreW, rim) {
+  const key = `${radius}|${tyreW}|${rim}`;
+  if (wheelCache.has(key)) return wheelCache.get(key);
+  const cyl = new THREE.CylinderGeometry(1, 1, 1, 14).rotateZ(Math.PI / 2);
+  const part = (sx, sr, color) => strip(cyl, new THREE.Matrix4().makeScale(sx, sr, sr), ['position', 'normal'], new THREE.Color(color));
+  const geo = mergeGeometries([
+    part(tyreW, radius, '#1b1b1b'),
+    part(tyreW * 1.06, radius * 0.62, rim),
+    part(tyreW * 1.12, radius * 0.18, '#5a5a5a'),
+  ]);
+  wheelCache.set(key, geo);
+  return geo;
+}
 
 function wheels(group, width, radius, axles, tyreW = 0.26, rim = '#b9b9b9') {
   const out = { front: [], all: [] };
+  const geo = wheelGeometry(radius, tyreW, rim);
   axles.forEach((z, i) => {
     for (const side of [-1, 1]) {
       const pivot = new THREE.Group();
       pivot.position.set(side * (width / 2 - tyreW / 2 - 0.02), radius, z);
-      const tyre = new THREE.Mesh(wheelGeo, mat('flat', '#1b1b1b'));
-      tyre.scale.set(tyreW, radius, radius);
+      const tyre = new THREE.Mesh(geo, FLAT);
       tyre.castShadow = true;
-      const hub = new THREE.Mesh(wheelGeo, mat('flat', rim));
-      hub.scale.set(1.06, 0.62, 0.62);
-      const cap = new THREE.Mesh(wheelGeo, mat('flat', '#5a5a5a'));
-      cap.scale.set(1.12, 0.18, 0.18);
-      tyre.add(hub, cap);
       pivot.add(tyre);
       group.add(pivot);
       out.all.push(tyre);
@@ -90,6 +115,31 @@ function wheels(group, width, radius, axles, tyreW = 0.26, rim = '#b9b9b9') {
     }
   });
   return out;
+}
+
+// Merge every body part sharing a material so each car is a handful of draw calls.
+function optimize(model) {
+  const g = model.group;
+  const buckets = new Map();
+  for (const child of [...g.children]) {
+    if (!child.isMesh) continue;
+    let material = child.material, color = null;
+    let attrs = material.map ? ['position', 'normal', 'uv'] : ['position', 'normal'];
+    if (material !== model.brake && material.isMeshLambertMaterial && !material.map) {
+      color = material.color;
+      material = material.emissive.getHex() ? LAMP : FLAT;
+    }
+    child.updateMatrix();
+    if (!buckets.has(material)) buckets.set(material, []);
+    buckets.get(material).push(strip(child.geometry, child.matrix, attrs, color));
+    g.remove(child);
+  }
+  for (const [material, geos] of buckets) {
+    const m = new THREE.Mesh(mergeGeometries(geos), material);
+    m.castShadow = material !== LAMP;
+    g.add(m);
+  }
+  return model;
 }
 
 function plateTexture(text) {
@@ -271,13 +321,13 @@ const TAXI_LIVERIES = [['#1f5fbf', '#f2c230'], ['#c0392b', '#f2c230'], ['#2e8b57
 
 export function makeVehicle(type, rnd = Math.random) {
   const p = (a) => a[Math.floor(rnd() * a.length)];
-  if (type === 'taxi') return { type, ...minibus(rnd, p(TAXI_LIVERIES)) };
-  if (type === 'golf') return { type, ...hatch(rnd, p(GOLF_COLOURS)) };
-  if (type === 'bakkie') return { type, ...bakkie(rnd, p(BAKKIE_COLOURS)) };
-  if (type === 'police') return { type, ...bakkie(rnd, '#f4f4f0', true) };
+  if (type === 'taxi') return optimize({ type, ...minibus(rnd, p(TAXI_LIVERIES)) });
+  if (type === 'golf') return optimize({ type, ...hatch(rnd, p(GOLF_COLOURS)) });
+  if (type === 'bakkie') return optimize({ type, ...bakkie(rnd, p(BAKKIE_COLOURS)) });
+  if (type === 'police') return optimize({ type, ...bakkie(rnd, '#f4f4f0', true) });
   throw new Error(`unknown vehicle ${type}`);
 }
 
 export function playerTaxi() {
-  return { type: 'taxi', ...minibus(Math.random, ['#1f5fbf', '#f2c230']) };
+  return optimize({ type: 'taxi', ...minibus(Math.random, ['#1f5fbf', '#f2c230']) });
 }

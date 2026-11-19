@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { heightAt } from './heightmap.js';
+import { heightAt, w as toWorld, WORLD_SCALE } from './heightmap.js';
 import { MeshBuilder, FACE } from './geometry.js';
 import { addSuburbHouse, fillPerimeter } from './houses.js';
 
@@ -8,9 +8,9 @@ import {
   asphaltTexture, cobbleTexture, sidewalkTexture, officeTextures, houseFacadeTexture,
 } from './textures.js';
 
-export const GRID_X = [-460, -390, -320, -250, -180, -100, 0, 100, 200, 300, 400, 500];
-export const GRID_Z = [-480, -380, -280, -180, -80, 20, 120, 220];
-const BOKAAP_EDGE = -100;
+export const GRID_X = [-460, -390, -320, -250, -180, -100, 0, 100, 200, 300, 400, 500].map(toWorld);
+export const GRID_Z = [-480, -380, -280, -180, -80, 20, 120, 220].map(toWorld);
+const BOKAAP_EDGE = toWorld(-100);
 const CBD_ROAD_W = 14;
 const BOKAAP_ROAD_W = 10;
 
@@ -36,20 +36,23 @@ function addRoad(points, width, surface, lift, name) {
   ROADS.push({ points, width, surface, lift, name });
 }
 
-const STREET_X = {
+const scaleKeys = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [toWorld(Number(k)), v]));
+const scalePts = (pts) => pts.map(([x, z]) => [toWorld(x), toWorld(z)]);
+
+const STREET_X = scaleKeys({
   [-250]: 'Chiappini St', [-180]: 'Rose St', [-100]: 'Buitengracht St', 0: 'Bree St', 100: 'Loop St',
   200: 'Long St', 300: 'Burg St', 400: 'Adderley St', 500: 'Plein St',
-};
-const STREET_Z = {
+});
+const STREET_Z = scaleKeys({
   [-480]: 'Strand St', [-380]: 'Waterkant St', [-280]: 'Shortmarket St', [-180]: 'Longmarket St',
   [-80]: 'Wale St', 20: 'Dorp St', 120: 'Hope St', 220: 'Orange St',
-};
+});
 
-export const BOKAAP = { minX: -320, maxX: -100, minZ: -380, maxZ: 20 };
+export const BOKAAP = { minX: toWorld(-250), maxX: toWorld(-100), minZ: toWorld(-280), maxZ: toWorld(20) };
 const inBoKaap = (x, z) => x >= BOKAAP.minX && x <= BOKAAP.maxX && z >= BOKAAP.minZ && z <= BOKAAP.maxZ;
 
 for (const x of GRID_X) {
-  const zMin = [0, 200, 400].includes(x) ? -560 : GRID_Z[0];
+  const zMin = [0, 200, 400].map(toWorld).includes(x) ? toWorld(-560) : GRID_Z[0];
   const zMax = GRID_Z[GRID_Z.length - 1];
   const w = roadWidthAtX(x);
   const n = STREET_X[x];
@@ -67,15 +70,31 @@ for (const z of GRID_Z) {
   } else addRoad([[GRID_X[0], z], [BOKAAP_EDGE, z]], BOKAAP_ROAD_W, 'asphalt', 0.17, n);
   addRoad([[BOKAAP_EDGE, z], [GRID_X[GRID_X.length - 1], z]], CBD_ROAD_W, 'asphalt', 0.17, n);
 }
-addRoad([[-700, -560], [-300, -575], [200, -560], [700, -575], [1250, -560]], 18, 'asphalt', 0.2, 'Helen Suzman Blvd');
-addRoad([[200, 220], [130, 400], [20, 580], [-150, 740], [-350, 860]], 12, 'asphalt', 0.22, 'Kloof Street');
-addRoad([[-350, 860], [-500, 940], [-650, 1000]], 10, 'asphalt', 0.22, 'Kloof Nek Road');
-addRoad([[-650, 1000], [-400, 1250], [-100, 1550], [150, 1800], [300, 1950]], 9, 'asphalt', 0.22, 'Tafelberg Road');
-addRoad([[-650, 1000], [-850, 1180], [-1100, 1380], [-1400, 1520], [-1720, 1420]], 10, 'asphalt', 0.22, 'Kloof Road');
+addRoad(scalePts([[-700, -560], [-300, -575], [200, -560], [700, -575], [1250, -560]]), 18, 'asphalt', 0.2, 'Helen Suzman Blvd');
+addRoad(scalePts([[200, 220], [130, 400], [20, 580], [-150, 740], [-350, 860]]), 12, 'asphalt', 0.22, 'Kloof Street');
+addRoad(scalePts([[-350, 860], [-500, 940], [-650, 1000]]), 10, 'asphalt', 0.22, 'Kloof Nek Road');
+addRoad(scalePts([[-650, 1000], [-400, 1250], [-100, 1550], [150, 1800], [300, 1950]]), 9, 'asphalt', 0.22, 'Tafelberg Road');
+addRoad(scalePts([[-650, 1000], [-850, 1180], [-1100, 1380], [-1400, 1520], [-1720, 1420]]), 10, 'asphalt', 0.22, 'Kloof Road');
 addRoad(
-  [[-650, 1000], [-900, 820], [-1150, 700], [-1300, 450], [-1300, 200], [-1220, 0], [-1150, -150]],
+  scalePts([[-650, 1000], [-900, 820], [-1150, 700], [-1300, 450], [-1300, 200], [-1220, 0], [-1150, -150]]),
   9, 'asphalt', 0.22, 'Signal Hill Road'
 );
+
+export const CBD_EDGE = BOKAAP_EDGE;
+
+export function cityEdges() {
+  const edges = [];
+  for (const x of GRID_X) {
+    for (let j = 0; j < GRID_Z.length - 1; j++) edges.push({ a: [x, GRID_Z[j]], b: [x, GRID_Z[j + 1]], width: roadWidthAtX(x) });
+  }
+  for (const z of GRID_Z) {
+    for (let i = 0; i < GRID_X.length - 1; i++) {
+      const width = GRID_X[i] < BOKAAP_EDGE ? BOKAAP_ROAD_W : CBD_ROAD_W;
+      edges.push({ a: [GRID_X[i], z], b: [GRID_X[i + 1], z], width });
+    }
+  }
+  return edges;
+}
 
 const PARK_BLOCKS = new Set(['6,5']);
 
@@ -240,14 +259,14 @@ function addOffice(builder, colliders, x0, x1, z0, z1, height) {
 function addCbdBlock(builder, colliders, r) {
   const inset = 3;
   const xa = r.x0 + inset, xb = r.x1 - inset, za = r.z0 + inset, zb = r.z1 - inset;
-  const towerZone = r.x0 > 0 && r.z1 < -200;
+  const towerZone = r.x0 > 0 && r.z1 < toWorld(-200);
   const tall = () => (towerZone ? 35 + rand() * 95 : 10 + rand() * 30);
   if (towerZone && rand() < 0.35) {
     addOffice(builder, colliders, xa + 6, xb - 6, za + 6, zb - 6, 80 + rand() * 60);
     return;
   }
-  const mx = (xa + xb) / 2 + (rand() - 0.5) * 16;
-  const mz = (za + zb) / 2 + (rand() - 0.5) * 16;
+  const mx = (xa + xb) / 2 + (rand() - 0.5) * 16 * WORLD_SCALE;
+  const mz = (za + zb) / 2 + (rand() - 0.5) * 16 * WORLD_SCALE;
   const gap = 1;
   addOffice(builder, colliders, xa, mx - gap, za, mz - gap, tall());
   addOffice(builder, colliders, mx + gap, xb, za, mz - gap, tall());

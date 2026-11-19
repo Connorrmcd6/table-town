@@ -1,4 +1,5 @@
 import { ROADS } from './world/city.js';
+import { w as toWorld } from './world/heightmap.js';
 
 export function createHud() {
   const $ = (id) => document.getElementById(id);
@@ -41,7 +42,7 @@ export function createHud() {
   }
 
   function drawRadar(player, cars) {
-    const W = radar.width, R = W / 2, scale = 0.45;
+    const W = radar.width, R = W / 2, scale = 0.6;
     rctx.save();
     rctx.clearRect(0, 0, W, W);
     rctx.beginPath();
@@ -54,7 +55,7 @@ export function createHud() {
     rctx.scale(scale, scale);
     rctx.translate(-player.pos.x, -player.pos.z);
     rctx.fillStyle = '#4a90e2';
-    rctx.fillRect(-4000, -4600, 8000, 4000);
+    rctx.fillRect(-4000, toWorld(-600) - 4000, 8000, 4000);
     rctx.lineCap = 'round';
     for (const road of ROADS) {
       if (!road.bbox) {

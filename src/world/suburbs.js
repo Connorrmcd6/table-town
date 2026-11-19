@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { heightAt, coastDistance, DISA_PARK } from './heightmap.js';
+import { heightAt, coastDistance, DISA_PARK, w as toWorld, WORLD_SCALE as S } from './heightmap.js';
 import { MeshBuilder, FACE } from './geometry.js';
 import { ROADS, buildRoads, GRID_X, GRID_Z } from './city.js';
 import { addSuburbHouse, fillPerimeter, footprintHeights } from './houses.js';
 import { asphaltTexture, officeTextures, houseFacadeTexture } from './textures.js';
 
-const CELL = 100;
+const CELL = toWorld(100);
 const CITY_X0 = GRID_X[0], CITY_X1 = GRID_X[GRID_X.length - 1];
 const CITY_Z0 = GRID_Z[0], CITY_Z1 = GRID_Z[GRID_Z.length - 1];
 
@@ -16,8 +16,8 @@ function lines(cityLines, min, max) {
   for (let v = cityLines[cityLines.length - 1] + CELL; v <= max; v += CELL) out.add(v);
   return [...out].sort((a, b) => a - b);
 }
-const XS = lines(GRID_X, -1800, 1750);
-const ZS = lines(GRID_Z, -700, 2150);
+const XS = lines(GRID_X, toWorld(-1800), toWorld(1750));
+const ZS = lines(GRID_Z, toWorld(-700), toWorld(2150));
 
 function lineIndex(arr, v) {
   let lo = 0, hi = arr.length - 2;
@@ -44,12 +44,12 @@ function rand() {
 function cellValid(x0, x1, z0, z1) {
   const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
   if (insideCityX(x0, x1) && insideCityZ(z0, z1)) return false;
-  if (cx > 380 && cz < -540) return false;
+  if (cx > toWorld(380) && cz < toWorld(-540)) return false;
   if (Math.hypot(cx - DISA_PARK.x, cz - DISA_PARK.z) < 85) return false;
-  if (coastDistance(cx, cz) < 50) return false;
+  if (coastDistance(cx, cz) < toWorld(50)) return false;
   const hs = [heightAt(x0, z0), heightAt(x1, z0), heightAt(x0, z1), heightAt(x1, z1), heightAt(cx, cz)];
   const min = Math.min(...hs), max = Math.max(...hs);
-  return min > 5 && max < 270 && max - min < 34;
+  return min > 5 * S && max < 270 * S && max - min < 34 * S;
 }
 
 function distToSegments(x, z, roads) {
@@ -134,8 +134,8 @@ export function createSuburbs(scene, colliders) {
     };
     const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
     const h = heightAt(cx, cz);
-    const seaPoint = cx < -1300;
-    const apartments = h < 80 && rand() < (seaPoint ? 0.6 : 0.12);
+    const seaPoint = cx < toWorld(-1300);
+    const apartments = h < 80 * S && rand() < (seaPoint ? 0.6 : 0.12);
     if (apartments && distToSegments(cx, cz, specialRoads) > 50) {
       addApartments(flats, colliders, inner);
       continue;
@@ -184,6 +184,7 @@ export function createSuburbs(scene, colliders) {
   scene.add(trunks, canopies);
 
   return {
+    edges: [...edges.values()].map((r) => ({ a: r.points[0], b: r.points[1], width: r.width })),
     isSuburb(x, z) {
       return valid.has(`${lineIndex(XS, x)},${lineIndex(ZS, z)}`);
     },

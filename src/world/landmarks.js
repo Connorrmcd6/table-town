@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { heightAt, CITY, DISA_PARK } from './heightmap.js';
+import { heightAt, CITY, DISA_PARK, w as toWorld, WORLD_SCALE as S } from './heightmap.js';
 import { MeshBuilder } from './geometry.js';
 import { ROADS } from './city.js';
 
@@ -35,12 +35,12 @@ function createWater(scene) {
 function createPines(scene, colliders, isSuburb) {
   const spots = [];
   for (let tries = 0; tries < 9000 && spots.length < 1400; tries++) {
-    const x = -1600 + rand() * 2800;
-    const z = -500 + rand() * 3100;
+    const x = toWorld(-1600 + rand() * 2800);
+    const z = toWorld(-500 + rand() * 3100);
     if (x > CITY.minX - 20 && x < CITY.maxX + 20 && z > CITY.minZ - 20 && z < CITY.maxZ + 20) continue;
     if (isSuburb(x, z) || Math.hypot(x - DISA_PARK.x, z - DISA_PARK.z) < 90) continue;
     const h = heightAt(x, z);
-    if (h < 20 || h > 520) continue;
+    if (h < 20 * S || h > 520 * S) continue;
     const slope = Math.abs(heightAt(x + 4, z) - h) + Math.abs(heightAt(x, z + 4) - h);
     if (slope > 3.2) continue;
     if (distToRoads(x, z) < 6) continue;
@@ -72,10 +72,10 @@ function createPines(scene, colliders, isSuburb) {
 
 function createPalms(scene, colliders) {
   const spots = [];
-  for (let x = -650; x < 1200; x += 28) {
+  for (let x = toWorld(-650); x < toWorld(1200); x += 28) {
     for (const side of [-12, 12]) {
-      const z = -567 + side;
-      if (Math.abs(x) % 200 < 20) continue;
+      const z = toWorld(-567) + side;
+      if (Math.abs(x) % toWorld(200) < 20) continue;
       spots.push([x, heightAt(x, z), z]);
     }
   }
@@ -101,7 +101,7 @@ function createHarbour(scene) {
   const steel = new THREE.Color('#3a3f45');
   const red = new THREE.Color('#b8452f');
   for (let i = 0; i < 6; i++) {
-    const x = 520 + i * 110, z = -850;
+    const x = toWorld(520 + i * 110), z = toWorld(-850);
     const y = heightAt(x, z);
     const col = i % 2 ? steel : red;
     for (const dx of [-8, 8]) for (const dz of [-6, 6]) b.box(x + dx, y, z + dz, 1.4, 38, 1.4, col);
@@ -110,7 +110,7 @@ function createHarbour(scene) {
     b.box(x, y + 41.5, z + 4, 6, 4, 6, steel);
   }
   for (let i = 0; i < 40; i++) {
-    const x = 450 + (i % 10) * 14 + 400, z = -700 - Math.floor(i / 10) * 4;
+    const x = toWorld(850) + (i % 10) * 14, z = toWorld(-700) - Math.floor(i / 10) * 4;
     const colors = ['#2e5f8a', '#a83232', '#c7a23a', '#3d7a4a', '#d9d9d9'];
     b.box(x, heightAt(x, z), z, 12, 2.6, 2.4, new THREE.Color(colors[i % colors.length]));
   }
@@ -120,7 +120,7 @@ function createHarbour(scene) {
 }
 
 function createMinaret(scene, colliders) {
-  const x = -140, z = -30, h = heightAt(x, z);
+  const x = toWorld(-140), z = toWorld(-30), h = heightAt(x, z);
   const g = new THREE.Group();
   const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 2.2, 22, 10), new THREE.MeshLambertMaterial({ color: '#f4f1ea' }));
   tower.position.y = 11;
@@ -136,7 +136,7 @@ function createMinaret(scene, colliders) {
 }
 
 function createNoonGun(scene, colliders) {
-  const x = -1150, z = -150, h = heightAt(x, z);
+  const x = toWorld(-1150), z = toWorld(-150), h = heightAt(x, z);
   const g = new THREE.Group();
   const hut = new THREE.Mesh(new THREE.BoxGeometry(8, 4, 6), new THREE.MeshLambertMaterial({ color: '#e9e2d0' }));
   hut.position.set(0, 2, -10);
@@ -150,9 +150,9 @@ function createNoonGun(scene, colliders) {
 }
 
 function createCableCar(scene) {
-  const lower = new THREE.Vector3(300, 0, 1955);
+  const lower = new THREE.Vector3(toWorld(300), 0, toWorld(1955));
   lower.y = heightAt(lower.x, lower.z);
-  const upper = new THREE.Vector3(450, 0, 2515);
+  const upper = new THREE.Vector3(toWorld(450), 0, toWorld(2515));
   upper.y = heightAt(upper.x, upper.z);
   const stationMat = new THREE.MeshLambertMaterial({ color: '#d8d4cc' });
   for (const p of [lower, upper]) {
@@ -191,10 +191,10 @@ function createTablecloth(scene) {
   const puffs = [];
   for (let i = 0; i < count; i++) {
     const drape = rand() < 0.45;
-    const x = -800 + rand() * 2800;
-    const z = drape ? 2440 + rand() * 70 : 2520 + rand() * 900;
-    const y = drape ? 960 + rand() * 110 : 1075 + rand() * 40;
-    puffs.push({ x, y, z, sx: 90 + rand() * 120, sy: drape ? 50 + rand() * 50 : 25 + rand() * 25, sz: 70 + rand() * 80 });
+    const x = toWorld(-800 + rand() * 2800);
+    const z = toWorld(drape ? 2440 + rand() * 70 : 2520 + rand() * 900);
+    const y = toWorld(drape ? 960 + rand() * 110 : 1075 + rand() * 40);
+    puffs.push({ x, y, z, sx: toWorld(90 + rand() * 120), sy: toWorld(drape ? 50 + rand() * 50 : 25 + rand() * 25), sz: toWorld(70 + rand() * 80) });
   }
   mesh.visible = false;
   scene.add(mesh);

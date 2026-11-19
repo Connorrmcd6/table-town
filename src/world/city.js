@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { heightAt, w as toWorld, WORLD_SCALE } from './heightmap.js';
+import { heightAt, atlanticLine, w as toWorld, WORLD_SCALE } from './heightmap.js';
 import { MeshBuilder, FACE } from './geometry.js';
 import { addSuburbHouse, fillPerimeter } from './houses.js';
 import { boundaryWalls, planters, clearOf } from './lowwalls.js';
@@ -75,7 +75,19 @@ addRoad(scalePts([[-700, -560], [-300, -575], [200, -560], [700, -575], [1250, -
 addRoad(scalePts([[200, 220], [130, 400], [20, 580], [-150, 740], [-350, 860]]), 12, 'asphalt', 0.32, 'Kloof Street', true);
 addRoad(scalePts([[-350, 860], [-500, 940], [-650, 1000]]), 10, 'asphalt', 0.32, 'Kloof Nek Road', true);
 addRoad(scalePts([[-650, 1000], [-400, 1250], [-100, 1550], [150, 1800], [300, 1950]]), 9, 'asphalt', 0.32, 'Tafelberg Road', true);
-addRoad(scalePts([[-650, 1000], [-850, 1180], [-1100, 1380], [-1400, 1520], [-1720, 1420]]), 10, 'asphalt', 0.32, 'Kloof Road', true);
+// The Atlantic seaboard road, offset inland from the shore: low along Sea Point, up on the slope above Clifton's coves,
+// and back far enough at Camps Bay to leave room for the beach and promenade.
+const seaboardOffset = (z) => (z < 1250 ? 95 : z < 1350 ? 95 + (z - 1250) * 0.3 : z < 1550 ? 125 : z < 1750 ? 125 + (z - 1550) * 0.325 : 190);
+export const seaboardPoint = (z) => [atlanticLine(toWorld(z)) + toWorld(seaboardOffset(z)), toWorld(z)];
+const SEABOARD_ZS = Array.from({ length: 35 }, (_, i) => -300 + i * 75);
+const CLIFTON_JOIN = seaboardPoint(1425), CAMPS_BAY_JOIN = seaboardPoint(1725);
+addRoad(
+  [...scalePts([[-700, -560], [-1100, -545], [-1450, -480], [-1700, -380]]), ...SEABOARD_ZS.filter((z) => z <= 900).map(seaboardPoint)],
+  10, 'asphalt', 0.32, 'Beach Road', true
+);
+addRoad(SEABOARD_ZS.filter((z) => z >= 900).map(seaboardPoint), 10, 'asphalt', 0.32, 'Victoria Road', true);
+addRoad([...scalePts([[-650, 1000], [-850, 1180], [-1100, 1380], [-1400, 1520]]), CLIFTON_JOIN], 10, 'asphalt', 0.32, 'Kloof Road', true);
+addRoad([...scalePts([[-650, 1000], [-850, 1250], [-1100, 1480], [-1350, 1660]]), CAMPS_BAY_JOIN], 10, 'asphalt', 0.32, 'Camps Bay Drive', true);
 addRoad(
   scalePts([[-650, 1000], [-900, 820], [-1150, 700], [-1300, 450], [-1300, 200], [-1220, 0], [-1150, -150]]),
   9, 'asphalt', 0.32, 'Signal Hill Road', true

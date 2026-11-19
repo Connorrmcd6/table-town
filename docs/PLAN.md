@@ -62,7 +62,7 @@ PS2-era geometry with modern lighting: warm golden-hour sky, haze, flat colours 
 ### Phase 3 - landmark set pieces: in progress
 
 - Ride the cable car to the top of Table Mountain (done: timetabled cabin from the end of Tafelberg Road, R15 fare, railed summit lookout).
-- Camps Bay and the Atlantic seaboard (Clifton, Sea Point promenade).
+- Camps Bay and the Atlantic seaboard (done: reshaped coast with Clifton's coves and the Camps Bay sweep under the Twelve Apostles, Beach Road and Victoria Road from Green Point, Camps Bay Drive from Kloof Nek, Sea Point apartments and promenade, the Camps Bay Strip, hillside villas, palms and boulders).
 - Blouberg beach across the bay with the classic Table Mountain view and kitesurfers.
 - V&A Waterfront with the Clock Tower and harbour.
 - Signal Hill and Lion's Head lookouts.

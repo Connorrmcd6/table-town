@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { heightAt, fbm, w as toWorld, WORLD_SCALE as S } from './heightmap.js';
+import { heightAt, fbm, isBeach, atlanticShore, w as toWorld, WORLD_SCALE as S } from './heightmap.js';
 
 function axisLines(min, max, denseMin, denseMax, denseStep, sparseStep) {
   const lines = [];
@@ -17,7 +17,7 @@ const CLIFF = new THREE.Color('#b8a088');
 const SEABED = new THREE.Color('#6f7f6a');
 
 export function createTerrain() {
-  const xs = axisLines(-9000, 9000, toWorld(-1700), toWorld(1700), 6, 150);
+  const xs = axisLines(-9000, 9000, toWorld(-2150), toWorld(1700), 6, 150);
   const zs = axisLines(-9000, 9000, toWorld(-950), toWorld(2700), 6, 150);
   const nx = xs.length, nz = zs.length;
   const pos = new Float32Array(nx * nz * 3);
@@ -53,8 +53,11 @@ export function createTerrain() {
     const slope = 1 - nor.getY(k);
     const x = pos[k * 3], z = pos[k * 3 + 2];
     const n = fbm(x * 0.02, z * 0.02, 3);
+    const beach = isBeach(x, z);
+    const seaboard = !beach && z > toWorld(-450) && x < atlanticShore(z) + toWorld(450);
     if (h < 0) c.copy(SEABED);
-    else if (h < 3.5) c.copy(SAND);
+    else if (seaboard && h < 1.6) c.copy(ROCK).multiplyScalar(0.8);
+    else if (h < (beach ? 4.5 : seaboard ? 0 : 3.5)) c.copy(SAND);
     else {
       c.copy(GRASS).lerp(FYNBOS, Math.min(1, h / (400 * S) + n * 0.5));
       if (slope > 0.25) c.lerp(ROCK, Math.min(1, (slope - 0.25) * 3));

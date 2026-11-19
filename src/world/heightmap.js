@@ -55,9 +55,20 @@ export function districtAt(x, z, h) {
   return rawDistrict(x / S, z / S, h / S);
 }
 
+const gauss = (v, mid, width) => Math.exp(-(((v - mid) / width) ** 2));
+
+// Atlantic shoreline: Sea Point's long straight, Clifton's string of coves under Lion's Head, then the wide sweep of Camps Bay.
+function atlanticBase(z) {
+  return -1900 + 150 * Math.sin(z * 0.002) - 190 * gauss(z, 1090, 230) + 330 * gauss(z, 1850, 200);
+}
+
+function atlanticX(z) {
+  return atlanticBase(z) + 55 * gauss(z, 1320, 40) + 60 * gauss(z, 1430, 40) + 50 * gauss(z, 1535, 35);
+}
+
 function rawCoast(x, z) {
   const bay = z - (-600 + 60 * Math.sin(x * 0.003));
-  const atlantic = x - (-1900 + 150 * Math.sin(z * 0.002));
+  const atlantic = x - atlanticX(z);
   const quay = Math.min(z + 900, 1200 - x, x - 380);
   return Math.max(Math.min(bay, atlantic), quay);
 }
@@ -96,6 +107,14 @@ function kloofNek(x, z) {
   return 120 * Math.exp(-(((x - RAW_KLOOF_NEK.x) / 380) ** 2) - ((z - RAW_KLOOF_NEK.z) / 260) ** 2);
 }
 
+// The Twelve Apostles: a buttressed ridge running south from Table Mountain behind Camps Bay.
+function apostles(x, z) {
+  if (z < 1900) return 0;
+  const ridge = -850 - (z - 2100) * 0.27;
+  const crest = 0.74 + 0.26 * Math.abs(Math.cos((Math.PI * (z - 2100)) / 135));
+  return 700 * crest * gauss(x, ridge, 230) * smoothstep(1900, 2350, z);
+}
+
 function devilsPeak(x, z) {
   const r = Math.hypot(x - 2400, z - 2000);
   return 1000 * Math.pow(clamp(1 - r / 1700, 0, 1), 1.6);
@@ -111,10 +130,15 @@ function rawHeight(x, z) {
   const d = rawCoast(x, z);
   let h = d > 0 ? Math.min(d * 0.035, 60) : Math.max(d * 0.08, -25);
   if (d > 0 && x > 380 && x < 1200 && z < -560) h = Math.max(h, 2.5);
-  const westRise = clamp((-150 - x) * 0.1, 0, 70) * smoothstep(-700, -400, z);
+  // The western suburbs sit on a rise, but it eases back down to a flat seafront along the Atlantic,
+  // wide at Sea Point and Camps Bay and squeezed to a cliff under Lion's Head at Clifton.
+  const fromSea = x - atlanticBase(z);
+  const strip = 420 - 110 * smoothstep(800, 1000, z) * (1 - smoothstep(1400, 1700, z)) + 380 * smoothstep(1450, 1750, z);
+  const seafront = smoothstep(40, strip, fromSea);
+  const westRise = clamp((-150 - x) * 0.1, 0, 70) * smoothstep(-700, -400, z) * seafront;
   const land = smoothstep(-20, 60, d);
   h += westRise * land;
-  h += (signalHill(x, z) + lionsHead(x, z) + kloofNek(x, z) + tableMountain(x, z) + devilsPeak(x, z)) * land;
+  h += (signalHill(x, z) + lionsHead(x, z) + kloofNek(x, z) + Math.max(tableMountain(x, z), apostles(x, z)) + devilsPeak(x, z)) * land * (0.12 + 0.88 * seafront);
   const rough = (1 - cityFlatness(x, z)) * land;
   if (rough > 0) {
     const mountain = clamp((h - 150) / 400, 0.08, 1);
@@ -126,8 +150,33 @@ function rawHeight(x, z) {
 
 export const SEA_LEVEL = 0;
 
+// Low sandy shore at Clifton and Camps Bay; elsewhere the Atlantic edge is rocks and lawn.
+function rawBeach(x, z) {
+  const fromSea = x - atlanticX(z);
+  return fromSea < 170 && ((z > 1280 && z < 1570) || (z > 1640 && z < 2030));
+}
+
+export function isBeach(x, z) {
+  return rawBeach(x / S, z / S);
+}
+
+// The Atlantic shoreline's x at world z, and the same line with Clifton's coves smoothed out.
+export function atlanticShore(z) {
+  return atlanticX(z / S) * S;
+}
+
+export function atlanticLine(z) {
+  return atlanticBase(z / S) * S;
+}
+
 function rawDistrict(x, z, h) {
   if (h > 900) return 'Table Mountain';
+  const fromSea = x - atlanticX(z);
+  if (z > 1600 && z < 2150 && fromSea < 700 && h < 250) return 'Camps Bay';
+  if (z > 1230 && z <= 1600 && fromSea < 350) return 'Clifton';
+  if (z > 1900 && h > 250 && x < -700) return 'Twelve Apostles';
+  if (x < -1300 && z > 700 && z <= 1230 && fromSea < 300) return 'Bantry Bay';
+  if (x < -1300 && z <= 700 && fromSea < 400) return 'Sea Point';
   if (Math.hypot(x + 1500, z - 1100) < 650) return "Lion's Head";
   if (Math.hypot(x + 1150, z + 150) < 700 && h > 120) return 'Signal Hill';
   if (Math.hypot(x + 650, z - 1000) < 300) return 'Kloof Nek';

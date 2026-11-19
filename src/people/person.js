@@ -210,7 +210,44 @@ export function poseAirborne(p, dt, vy) {
 
 export function knockDown(p, amount) {
   p.body.rotation.x = -Math.PI / 2 * amount;
-  p.body.position.y = 0.15 * amount;
+  p.body.position.set(0, 0.15 * amount, 0);
+}
+
+const smooth = (x) => x * x * (3 - 2 * x);
+
+// Bail-out roll: tucked somersault about the hips, then a squat that rises to standing.
+export function poseRoll(p, t, dur, spins, recover) {
+  const b = p.body;
+  if (t < dur) {
+    const k = t / dur;
+    const tuck = Math.min(1, k * 6, (1 - k) * 4 + 0.35);
+    const angle = Math.PI * 2 * spins * smooth(k);
+    const pivot = 0.94;
+    const hop = 0.3 * Math.max(0, Math.sin(Math.PI * Math.min(1, k * spins * 1.6)));
+    b.rotation.x = angle;
+    b.position.y = pivot - pivot * Math.cos(angle) - 0.44 * tuck + hop;
+    b.position.z = -pivot * Math.sin(angle);
+    crouch(p, tuck, 1);
+  } else {
+    const q = 1 - smooth(Math.min(1, (t - dur) / recover));
+    b.rotation.x = 0;
+    b.position.set(0, -0.48 * q, 0);
+    crouch(p, q, 0);
+  }
+}
+
+function crouch(p, amount, tuck) {
+  const thigh = -(1.4 + 0.5 * tuck) * amount;
+  p.legL.rotation.set(thigh, 0, 0.08 * amount);
+  p.legR.rotation.set(thigh, 0, -0.08 * amount);
+  p.kneeL.rotation.x = (2.2 + 0.1 * tuck) * amount;
+  p.kneeR.rotation.x = (2.2 + 0.1 * tuck) * amount;
+  p.torso.rotation.set(0.55 * amount, 0, 0);
+  p.armL.rotation.set(-(0.9 + 0.8 * tuck) * amount, 0, 0.2 * amount);
+  p.armR.rotation.set(-(0.9 + 0.8 * tuck) * amount, 0, -0.2 * amount);
+  p.elbowL.rotation.x = -(0.3 + 1.3 * tuck) * amount;
+  p.elbowR.rotation.x = -(0.3 + 1.3 * tuck) * amount;
+  p.hips.rotation.y = 0;
 }
 
 // Seated on a bike: thighs forward, knees bent, hands on the bars.

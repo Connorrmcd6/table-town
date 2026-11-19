@@ -256,7 +256,7 @@ function dismount(vehicle) {
   clearPose(walker.model);
 }
 
-const BAIL_SPEED = 4;
+const BAIL_SPEED = 5;
 
 function exitVehicle() {
   const { vehicle, walker } = world;
@@ -273,11 +273,10 @@ function exitVehicle() {
   attachHeadlight(null);
   if (speed > BAIL_SPEED) {
     const dir = new THREE.Vector2(vehicle.vel.x + lx * 2, vehicle.vel.y + lz * 2).normalize();
-    walker.hit(dir, speed * 0.55);
-    walker.down = 1 + Math.min(1.5, speed / 15);
-    audio.crash(speed);
-    if (speed > 9) damage((speed - 9) * 1.3);
-  }
+    walker.bail(dir, speed);
+    audio.crash(speed * 0.6);
+    if (speed > 14) damage((speed - 14) * 1.2);
+  } else walker.vel.set(lx * 2.5, lz * 2.5);
 }
 
 function respawnAt(spot, kind) {

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { heightAt } from '../world/heightmap.js';
-import { makePerson, animatePerson, knockDown, poseAirborne } from './person.js';
+import { makePerson, animatePerson, knockDown, poseAirborne, poseRoll } from './person.js';
 import { vehicleCircles } from './pedestrians.js';
 
 const SPRINT = 8.5;
@@ -21,6 +21,7 @@ export class Walker {
     this.vel = new THREE.Vector2();
     this.heading = 0;
     this.down = 0;
+    this.roll = null;
     this.vy = 0;
     this.airborne = false;
     this.active = false;
@@ -37,6 +38,7 @@ export class Walker {
     this.heading = heading;
     this.vel.set(0, 0);
     this.down = 0;
+    this.roll = null;
     this.vy = 0;
     this.airborne = false;
     this.sync(0);
@@ -47,17 +49,36 @@ export class Walker {
     this.model.group.visible = on;
   }
 
+  get busy() {
+    return this.down > 0 || this.roll !== null;
+  }
+
   hit(dir, strength) {
+    this.roll = null;
     this.down = 1.6;
     this.vel.copy(dir).multiplyScalar(Math.min(strength, 9));
   }
 
+  bail(dir, speed) {
+    const spins = speed > 20 ? 2 : 1;
+    this.heading = Math.atan2(dir.x, dir.y);
+    this.vel.copy(dir).multiplyScalar(Math.min(speed * 0.6, 12));
+    this.roll = { t: 0, dur: 0.5 + 0.4 * spins, spins, recover: 0.35 };
+    this.airborne = false;
+    this.vy = 0;
+  }
+
   update(dt, input, viewYaw, { colliders, vehicles, jump = false }) {
-    if (jump && !this.airborne && this.down <= 0) {
+    if (jump && !this.airborne && !this.busy) {
       this.vy = JUMP_SPEED;
       this.airborne = true;
     }
-    if (this.down > 0) {
+    if (this.roll) {
+      const r = this.roll;
+      r.t += dt;
+      this.vel.multiplyScalar(Math.exp((r.t < r.dur ? -1.6 : -8) * dt));
+      if (r.t >= r.dur + r.recover) this.roll = null;
+    } else if (this.down > 0) {
       this.down -= dt;
       this.vel.multiplyScalar(Math.exp(-3 * dt));
     } else {
@@ -107,7 +128,8 @@ export class Walker {
     const g = this.model.group;
     g.position.copy(this.pos);
     g.rotation.y = this.heading;
-    if (this.down > 0) knockDown(this.model, Math.min(1, this.down * 2));
+    if (this.roll) poseRoll(this.model, this.roll.t, this.roll.dur, this.roll.spins, this.roll.recover);
+    else if (this.down > 0) knockDown(this.model, Math.min(1, this.down * 2));
     else {
       knockDown(this.model, 0);
       if (this.airborne) poseAirborne(this.model, dt, this.vy);
